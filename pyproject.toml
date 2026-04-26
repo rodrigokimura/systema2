@@ -7,10 +7,22 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.136.1",
     "sqlmodel>=0.0.38",
+    "typer>=0.24.2",
     "uvicorn>=0.46.0",
 ]
+
+[project.scripts]
+systema2 = "systema2.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["systema2"]
 
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",
+    "pytest>=9.0.3",
 ]
