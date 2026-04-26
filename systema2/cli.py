@@ -126,6 +126,16 @@ def update_task(
     _render_task(task)
 
 
+@app.command("tui")
+def launch_tui() -> None:
+    """Launch the Textual TUI."""
+    _ensure_db()
+    # Imported lazily so `systema2 --help` doesn't pay the textual import cost.
+    from systema2.tui import Systema2App
+
+    Systema2App().run()
+
+
 @app.command("delete")
 def delete_task(
     task_id: int = typer.Argument(..., help="ID of the task to delete."),
