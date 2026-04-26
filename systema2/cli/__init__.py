@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typer
 
+from systema2.cli import projects as projects_cmd
 from systema2.cli import serve as serve_cmd
 from systema2.cli import tasks as tasks_cmd
 from systema2.cli import tui as tui_cmd
@@ -17,6 +18,9 @@ app.command("update")(tasks_cmd.update_task)
 app.command("delete")(tasks_cmd.delete_task)
 app.command("tui")(tui_cmd.launch_tui)
 app.command("serve")(serve_cmd.serve)
+
+# Project management lives under `systema2 project ...`
+app.add_typer(projects_cmd.app, name="project")
 
 
 def main() -> None:

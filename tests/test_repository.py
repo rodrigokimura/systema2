@@ -6,10 +6,11 @@ import pytest
 
 from systema2 import repository as repo_module
 from systema2.config import Mode, get_mode
-from systema2.models import TaskCreate, TaskUpdate
+from systema2.models import ProjectCreate, ProjectUpdate, TaskCreate, TaskUpdate
 from systema2.repository import (
     HttpTaskRepository,
     LocalTaskRepository,
+    ProjectNotFoundError,
     RepositoryError,
     get_repository,
 )
@@ -158,6 +159,89 @@ def test_http_repository_crud(http_repo_against_app: HttpTaskRepository) -> None
 
     assert repo.delete_task(created.id) is True
     assert repo.delete_task(created.id) is False
+
+
+# ---------------------------------------------------------------------------
+# Projects (both backends)
+# ---------------------------------------------------------------------------
+
+
+def test_local_repository_projects_crud(db_engine) -> None:
+    repo = LocalTaskRepository()
+    assert repo.list_projects() == []
+
+    p = repo.create_project(ProjectCreate(name="work", description="desk"))
+    assert p.id is not None
+    assert repo.get_project(p.id) is not None
+
+    u = repo.update_project(p.id, ProjectUpdate(name="work!"))
+    assert u is not None and u.name == "work!"
+
+    assert repo.delete_project(p.id) is True
+    assert repo.get_project(p.id) is None
+    assert repo.delete_project(p.id) is False
+
+
+def test_local_repository_task_missing_project_raises(db_engine) -> None:
+    repo = LocalTaskRepository()
+    with pytest.raises(ProjectNotFoundError) as exc:
+        repo.create_task(TaskCreate(title="x", project_id=999))
+    assert exc.value.project_id == 999
+
+
+def test_http_repository_projects_crud(
+    http_repo_against_app: HttpTaskRepository,
+) -> None:
+    repo = http_repo_against_app
+    assert repo.list_projects() == []
+
+    p = repo.create_project(ProjectCreate(name="remote"))
+    assert p.id is not None
+    assert repo.get_project(p.id) is not None
+
+    u = repo.update_project(p.id, ProjectUpdate(description="new"))
+    assert u is not None and u.description == "new"
+    assert u.name == "remote"  # partial update must not null out name
+
+    assert repo.delete_project(p.id) is True
+    assert repo.delete_project(p.id) is False
+
+
+def test_http_repository_task_missing_project_raises(
+    http_repo_against_app: HttpTaskRepository,
+) -> None:
+    repo = http_repo_against_app
+    with pytest.raises(ProjectNotFoundError) as exc:
+        repo.create_task(TaskCreate(title="x", project_id=999))
+    assert exc.value.project_id == 999
+
+    p = repo.create_project(ProjectCreate(name="p"))
+    t = repo.create_task(TaskCreate(title="t", project_id=p.id))
+    assert t.project_id == p.id
+
+    # Update to bogus project also raises.
+    with pytest.raises(ProjectNotFoundError):
+        repo.update_task(t.id, TaskUpdate(project_id=9999))  # type: ignore[arg-type]
+
+
+def test_http_repository_list_tasks_filters(
+    http_repo_against_app: HttpTaskRepository,
+) -> None:
+    repo = http_repo_against_app
+    p1 = repo.create_project(ProjectCreate(name="p1"))
+    p2 = repo.create_project(ProjectCreate(name="p2"))
+    repo.create_task(TaskCreate(title="a", project_id=p1.id))
+    repo.create_task(TaskCreate(title="b", project_id=p2.id))
+    repo.create_task(TaskCreate(title="orphan"))
+
+    titles_p1 = sorted(t.title for t in repo.list_tasks(project_id=p1.id))
+    assert titles_p1 == ["a"]
+
+    titles_unassigned = sorted(t.title for t in repo.list_tasks(unassigned=True))
+    assert titles_unassigned == ["orphan"]
+
+
+# ---------------------------------------------------------------------------
 
 
 def test_http_repository_network_error_wrapped(

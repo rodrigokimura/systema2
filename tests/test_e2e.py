@@ -378,9 +378,180 @@ def test_e2e_json_via_api_matches_schema(
         "title",
         "description",
         "completed",
+        "project_id",
         "created_at",
         "updated_at",
     }
     assert set(created.keys()) == expected_keys
     # Timestamps should be ISO-8601 strings parseable by json round-trip.
     json.dumps(created)  # no non-serializable values
+
+
+# ---------------------------------------------------------------------------
+# Projects — local mode
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_local_project_lifecycle(workspace: Path) -> None:
+    env = {"SYSTEMA2_MODE": "local"}
+
+    # Create a project and a task linked to it.
+    _run(["project", "create", "work", "-d", "desk"], cwd=workspace, env=env)
+    _run(["create", "deep work", "-p", "1"], cwd=workspace, env=env)
+    _run(["create", "orphan"], cwd=workspace, env=env)
+
+    # Project listing.
+    r = _run(["project", "list"], cwd=workspace, env=env)
+    assert "work" in r.stdout
+
+    # Filtering.
+    r = _run(["list", "-p", "1"], cwd=workspace, env=env)
+    assert "deep work" in r.stdout
+    assert "orphan" not in r.stdout
+
+    r = _run(["list", "--unassigned"], cwd=workspace, env=env)
+    assert "orphan" in r.stdout
+    assert "deep work" not in r.stdout
+
+    # Missing project => exit 1.
+    r = _run(
+        ["create", "bad", "-p", "999"],
+        cwd=workspace,
+        env=env,
+        check=False,
+    )
+    assert r.returncode == 1
+    assert "Project 999 not found" in r.stdout
+
+    # Deleting the project unlinks tasks across subprocess boundaries.
+    _run(["project", "delete", "1", "--yes"], cwd=workspace, env=env)
+    r = _run(["list", "--unassigned"], cwd=workspace, env=env)
+    assert "deep work" in r.stdout
+    assert "orphan" in r.stdout
+
+
+# ---------------------------------------------------------------------------
+# Projects — server & client modes
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_server_project_http_crud(
+    server: tuple[subprocess.Popen[str], str],
+) -> None:
+    _proc, base_url = server
+
+    # Create a project.
+    r = httpx.post(
+        f"{base_url}/projects", json={"name": "P"}, timeout=3.0
+    )
+    assert r.status_code == 201
+    pid = r.json()["id"]
+
+    # Create tasks, one in the project and one outside.
+    r = httpx.post(
+        f"{base_url}/tasks",
+        json={"title": "inside", "project_id": pid},
+        timeout=3.0,
+    )
+    assert r.status_code == 201
+    assert r.json()["project_id"] == pid
+    httpx.post(
+        f"{base_url}/tasks", json={"title": "outside"}, timeout=3.0
+    ).raise_for_status()
+
+    # Filtering over real HTTP.
+    r = httpx.get(
+        f"{base_url}/tasks", params={"project_id": pid}, timeout=3.0
+    )
+    titles = [t["title"] for t in r.json()]
+    assert titles == ["inside"]
+
+    r = httpx.get(
+        f"{base_url}/tasks", params={"unassigned": "true"}, timeout=3.0
+    )
+    titles = [t["title"] for t in r.json()]
+    assert titles == ["outside"]
+
+    # Nested route.
+    r = httpx.get(f"{base_url}/projects/{pid}/tasks", timeout=3.0)
+    assert [t["title"] for t in r.json()] == ["inside"]
+
+    # Deleting the project unlinks tasks (through the HTTP layer).
+    r = httpx.delete(f"{base_url}/projects/{pid}", timeout=3.0)
+    assert r.status_code == 204
+
+    tasks = httpx.get(f"{base_url}/tasks", timeout=3.0).json()
+    assert all(t["project_id"] is None for t in tasks)
+
+
+def test_e2e_client_project_round_trip(tmp_path: Path) -> None:
+    server_cwd = tmp_path / "server"
+    client_cwd = tmp_path / "client"
+    server_cwd.mkdir()
+    client_cwd.mkdir()
+
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+    proc = _spawn_server(server_cwd, port)
+    try:
+        _wait_for_server(base_url)
+        env = {"SYSTEMA2_MODE": "client", "SYSTEMA2_API_URL": base_url}
+
+        # Create project + linked task via the client CLI.
+        _run(["project", "create", "work"], cwd=client_cwd, env=env)
+        _run(["create", "deep work", "-p", "1"], cwd=client_cwd, env=env)
+
+        # Verify through the REST API directly.
+        tasks = httpx.get(f"{base_url}/tasks", timeout=3.0).json()
+        assert len(tasks) == 1
+        assert tasks[0]["project_id"] == 1
+
+        # Client-side filtering.
+        r = _run(["list", "-p", "1"], cwd=client_cwd, env=env)
+        assert "deep work" in r.stdout
+
+        # Deleting through the client unlinks tasks server-side.
+        _run(
+            ["project", "delete", "1", "--yes"], cwd=client_cwd, env=env
+        )
+        tasks = httpx.get(f"{base_url}/tasks", timeout=3.0).json()
+        assert len(tasks) == 1
+        assert tasks[0]["project_id"] is None
+
+        # Client never wrote a local DB.
+        assert not (client_cwd / "systema2.db").exists()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+def test_e2e_client_missing_project_exits_1(tmp_path: Path) -> None:
+    server_cwd = tmp_path / "server"
+    client_cwd = tmp_path / "client"
+    server_cwd.mkdir()
+    client_cwd.mkdir()
+
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+    proc = _spawn_server(server_cwd, port)
+    try:
+        _wait_for_server(base_url)
+        result = _run(
+            ["create", "x", "-p", "999"],
+            cwd=client_cwd,
+            env={"SYSTEMA2_MODE": "client", "SYSTEMA2_API_URL": base_url},
+            check=False,
+        )
+        assert result.returncode == 1
+        assert "Project 999 not found" in result.stdout
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)

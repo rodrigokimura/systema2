@@ -7,7 +7,11 @@ import typer
 from systema2.cli._render import console, render_task, render_task_list
 from systema2.database import init_db_if_local
 from systema2.models import TaskCreate, TaskUpdate
-from systema2.repository import RepositoryError, get_repository
+from systema2.repository import (
+    ProjectNotFoundError,
+    RepositoryError,
+    get_repository,
+)
 
 
 def _repo():
@@ -21,11 +25,22 @@ def _handle_repo_error(exc: RepositoryError) -> None:
     raise typer.Exit(code=2)
 
 
-def list_tasks() -> None:
+def list_tasks(
+    project: int | None = typer.Option(
+        None, "--project", "-p", help="Filter to tasks in this project id."
+    ),
+    unassigned: bool = typer.Option(
+        False, "--unassigned", help="Show only tasks with no project."
+    ),
+) -> None:
     """List all tasks."""
+    if project is not None and unassigned:
+        console.print("[red]Use either --project or --unassigned, not both.[/red]")
+        raise typer.Exit(code=2)
+
     repo = _repo()
     try:
-        tasks = repo.list_tasks()
+        tasks = repo.list_tasks(project_id=project, unassigned=unassigned)
     except RepositoryError as exc:
         _handle_repo_error(exc)
         return
@@ -40,12 +55,23 @@ def create_task(
     completed: bool = typer.Option(
         False, "--completed/--not-completed", help="Mark task as completed."
     ),
+    project: int | None = typer.Option(
+        None, "--project", "-p", help="Assign to this project id."
+    ),
 ) -> None:
     """Create a new task."""
     repo = _repo()
-    payload = TaskCreate(title=title, description=description, completed=completed)
+    payload = TaskCreate(
+        title=title,
+        description=description,
+        completed=completed,
+        project_id=project,
+    )
     try:
         task = repo.create_task(payload)
+    except ProjectNotFoundError as exc:
+        console.print(f"[red]Project {exc.project_id} not found[/red]")
+        raise typer.Exit(code=1)
     except RepositoryError as exc:
         _handle_repo_error(exc)
         return
@@ -60,11 +86,21 @@ def update_task(
     completed: bool | None = typer.Option(
         None, "--completed/--not-completed", help="Set completion status."
     ),
+    project: int | None = typer.Option(
+        None, "--project", "-p", help="Reassign to this project id."
+    ),
+    clear_project: bool = typer.Option(
+        False, "--clear-project", help="Unassign the task from its project."
+    ),
 ) -> None:
     """Update fields on an existing task. Only provided options are changed."""
+    if project is not None and clear_project:
+        console.print(
+            "[red]Use either --project or --clear-project, not both.[/red]"
+        )
+        raise typer.Exit(code=2)
+
     repo = _repo()
-    # Build dict only from explicitly-provided options so unset ones don't
-    # overwrite existing fields with None.
     raw: dict[str, object] = {}
     if title is not None:
         raw["title"] = title
@@ -72,10 +108,17 @@ def update_task(
         raw["description"] = description
     if completed is not None:
         raw["completed"] = completed
+    if project is not None:
+        raw["project_id"] = project
+    elif clear_project:
+        raw["project_id"] = None
 
     payload = TaskUpdate(**raw)
     try:
         task = repo.update_task(task_id, payload)
+    except ProjectNotFoundError as exc:
+        console.print(f"[red]Project {exc.project_id} not found[/red]")
+        raise typer.Exit(code=1)
     except RepositoryError as exc:
         _handle_repo_error(exc)
         return
