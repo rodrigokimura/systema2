@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from systema2.api.routes import projects as projects_routes
 from systema2.api.routes import tasks as tasks_routes
 from systema2.database import engine, init_db
 
@@ -21,4 +22,5 @@ def root() -> dict[str, str]:
     return {"app": "systema2", "status": "ok"}
 
 
+app.include_router(projects_routes.router)
 app.include_router(tasks_routes.router)

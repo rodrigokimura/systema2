@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
 
 from systema2 import services
@@ -16,8 +16,18 @@ def _get_or_404(session: Session, task_id: int) -> Task:
 
 
 @router.get("", response_model=list[TaskRead])
-def list_tasks(session: Session = Depends(get_session)) -> list[Task]:
-    return services.list_tasks(session)
+def list_tasks(
+    project_id: int | None = Query(
+        None, description="Filter to tasks in this project."
+    ),
+    unassigned: bool = Query(
+        False, description="If true, return only tasks with no project."
+    ),
+    session: Session = Depends(get_session),
+) -> list[Task]:
+    return services.list_tasks(
+        session, project_id=project_id, unassigned=unassigned
+    )
 
 
 @router.get("/{task_id}", response_model=TaskRead)
@@ -29,7 +39,16 @@ def get_task(task_id: int, session: Session = Depends(get_session)) -> Task:
 def create_task(
     payload: TaskCreate, session: Session = Depends(get_session)
 ) -> Task:
-    return services.create_task(session, payload)
+    try:
+        return services.create_task(session, payload)
+    except services.ProjectNotFoundError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "project_not_found",
+                "project_id": exc.project_id,
+            },
+        ) from exc
 
 
 @router.patch("/{task_id}", response_model=TaskRead)
@@ -38,7 +57,16 @@ def update_task(
     payload: TaskUpdate,
     session: Session = Depends(get_session),
 ) -> Task:
-    task = services.update_task(session, task_id, payload)
+    try:
+        task = services.update_task(session, task_id, payload)
+    except services.ProjectNotFoundError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error_code": "project_not_found",
+                "project_id": exc.project_id,
+            },
+        ) from exc
     if task is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Task not found")
     return task

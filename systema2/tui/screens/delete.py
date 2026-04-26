@@ -1,4 +1,4 @@
-"""Delete confirmation modal."""
+"""Delete confirmation modals for tasks and projects."""
 
 from __future__ import annotations
 
@@ -8,54 +8,46 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label
 
-from systema2.models import Task
+from systema2.models import Project, Task
 from systema2.repository import RepositoryError, get_repository
 
 
-class DeleteTaskScreen(ModalScreen[bool]):
-    """Confirmation modal for deleting a task."""
+_DELETE_CSS = """
+$self {
+    align: center middle;
+}
+#dialog {
+    width: 60;
+    height: auto;
+    padding: 1 2;
+    background: $surface;
+    border: thick $error;
+}
+#dialog Label {
+    width: 100%;
+    content-align: center middle;
+    padding: 1 0;
+}
+#dialog Horizontal {
+    height: auto;
+    align: center middle;
+    padding-top: 1;
+}
+#dialog Button { margin: 0 1; }
+"""
 
-    DEFAULT_CSS = """
-    DeleteTaskScreen {
-        align: center middle;
-    }
-    #dialog {
-        width: 60;
-        height: auto;
-        padding: 1 2;
-        background: $surface;
-        border: thick $error;
-    }
-    #dialog Label {
-        width: 100%;
-        content-align: center middle;
-        padding: 1 0;
-    }
-    #dialog Horizontal {
-        height: auto;
-        align: center middle;
-        padding-top: 1;
-    }
-    #dialog Button {
-        margin: 0 1;
-    }
-    """
 
+class _ConfirmDeleteScreen(ModalScreen[bool]):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel"),
         Binding("enter", "confirm", "Confirm"),
     ]
 
-    def __init__(self, task: Task) -> None:
-        super().__init__()
-        # NOTE: don't use `self._task` — Textual's MessagePump owns that name.
-        self._task_obj = task
+    _message: str = ""
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Label(
-                f"Delete task #{self._task_obj.id} ({self._task_obj.title!r})?"
-            )
+            yield Label(self._message)
             with Horizontal():
                 yield Button("Cancel", id="cancel")
                 yield Button("Delete", variant="error", id="delete")
@@ -75,13 +67,50 @@ class DeleteTaskScreen(ModalScreen[bool]):
         elif event.button.id == "delete":
             self._confirm()
 
+    def _confirm(self) -> None:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+
+class DeleteTaskScreen(_ConfirmDeleteScreen):
+    """Confirmation modal for deleting a task."""
+
+    DEFAULT_CSS = _DELETE_CSS.replace("$self", "DeleteTaskScreen")
+
+    def __init__(self, task: Task) -> None:
+        super().__init__()
+        self._task_obj = task
+        self._message = (
+            f"Delete task #{task.id} ({task.title!r})?"
+        )
+
     def _confirm(self) -> None:
         assert self._task_obj.id is not None
         try:
             get_repository().delete_task(self._task_obj.id)
         except RepositoryError:
-            # Leave the modal open; the app-level screen will show the error
-            # on reload. Dismiss as not-deleted so caller knows it failed.
+            self.dismiss(False)
+            return
+        self.dismiss(True)
+
+
+class DeleteProjectScreen(_ConfirmDeleteScreen):
+    """Confirmation modal for deleting a project."""
+
+    DEFAULT_CSS = _DELETE_CSS.replace("$self", "DeleteProjectScreen")
+
+    def __init__(self, project: Project) -> None:
+        super().__init__()
+        self._project_obj = project
+        self._message = (
+            f"Delete project #{project.id} ({project.name!r})? "
+            "Its tasks will be unassigned."
+        )
+
+    def _confirm(self) -> None:
+        assert self._project_obj.id is not None
+        try:
+            get_repository().delete_project(self._project_obj.id)
+        except RepositoryError:
             self.dismiss(False)
             return
         self.dismiss(True)

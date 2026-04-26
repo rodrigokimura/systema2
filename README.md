@@ -5,12 +5,14 @@ Managed with **uv**.
 
 ## Features
 
-- Task model with `id`, `title`, `description`, `completed`, `created_at`, `updated_at`
-- CRUD endpoints: create, list, retrieve, partial-update, delete
+- Tasks and Projects, with tasks optionally linked to a project
+- CRUD endpoints for both; deleting a project unlinks its tasks
+- `/tasks?project_id=N` and `/tasks?unassigned=true` filters
 - Automatic request validation via Pydantic/SQLModel schemas
 - Auto-generated OpenAPI docs at `/docs` and `/redoc`
 - SQLite database auto-created on startup via a FastAPI lifespan handler
-- Typer CLI and Textual TUI that share the same CRUD code
+- Typer CLI (with a `project` sub-app) and Textual TUI (projects sidebar +
+  tasks pane) that share the same CRUD code
 - Three runtime modes (`local` · `client` · `server`) switched via env var
 
 ## Requirements
@@ -31,11 +33,25 @@ uv sync          # creates .venv and installs all deps from uv.lock
 ### CLI / TUI (local mode — default)
 
 ```bash
+# Tasks
 uv run systema2 create "buy milk" -d "2L, semi-skimmed"
 uv run systema2 list
 uv run systema2 update 1 --completed
 uv run systema2 delete 1 --yes
-uv run systema2 tui          # Textual UI
+
+# Projects
+uv run systema2 project create "home" -d "Household chores"
+uv run systema2 project list
+uv run systema2 project show 1 --with-tasks
+
+# Link a task to a project
+uv run systema2 create "clean fridge" -p 1
+uv run systema2 list -p 1          # filter by project
+uv run systema2 list --unassigned  # tasks with no project
+uv run systema2 update 2 --clear-project
+
+# TUI
+uv run systema2 tui
 ```
 
 ### Server
@@ -91,6 +107,16 @@ systema2/
 
 ## Data model
 
+### `Project` (table)
+
+| Field         | Type            | Notes                              |
+|---------------|-----------------|------------------------------------|
+| `id`          | `int`           | Primary key, auto-assigned         |
+| `name`        | `str`           | Required, 1–200 chars, indexed     |
+| `description` | `str \| None`   | Optional, up to 2000 chars         |
+| `created_at`  | `datetime` (UTC)| Set on creation                    |
+| `updated_at`  | `datetime` (UTC)| Updated on every successful PATCH  |
+
 ### `Task` (table)
 
 | Field         | Type            | Notes                              |
@@ -99,27 +125,36 @@ systema2/
 | `title`       | `str`           | Required, 1–200 chars, indexed     |
 | `description` | `str \| None`   | Optional, up to 2000 chars         |
 | `completed`   | `bool`          | Defaults to `false`                |
+| `project_id`  | `int \| None`   | FK to `project.id`; `None` = no project |
 | `created_at`  | `datetime` (UTC)| Set on creation                    |
 | `updated_at`  | `datetime` (UTC)| Updated on every successful PATCH  |
 
-Three schemas wrap it at the API boundary:
-
-- `TaskCreate` — input for `POST /tasks` (`title`, optional `description`, optional `completed`)
-- `TaskUpdate` — input for `PATCH /tasks/{id}`, all fields optional
-- `TaskRead`   — response model (everything including `id` and timestamps)
+Three schemas wrap each table at the API boundary
+(`TaskCreate`/`TaskUpdate`/`TaskRead` and the analogous `Project*`).
+Deleting a project **does not delete its tasks**; they are unlinked
+(`project_id` set to `NULL`).
 
 ## API reference
 
 Base URL: `http://127.0.0.1:8000`
 
-| Method | Path               | Description              | Success       |
-|--------|--------------------|--------------------------|---------------|
-| GET    | `/`                | Health / info            | 200           |
-| GET    | `/tasks`           | List all tasks           | 200           |
-| GET    | `/tasks/{id}`      | Get one task             | 200 / 404     |
-| POST   | `/tasks`           | Create a task            | 201 / 422     |
-| PATCH  | `/tasks/{id}`      | Partially update a task  | 200 / 404 / 422 |
-| DELETE | `/tasks/{id}`      | Delete a task            | 204 / 404     |
+| Method | Path                          | Description                         | Success              |
+|--------|-------------------------------|-------------------------------------|----------------------|
+| GET    | `/`                           | Health / info                       | 200                  |
+| GET    | `/tasks`                      | List tasks (`?project_id=N`, `?unassigned=true`) | 200     |
+| GET    | `/tasks/{id}`                 | Get one task                        | 200 / 404            |
+| POST   | `/tasks`                      | Create a task                       | 201 / 400 / 422      |
+| PATCH  | `/tasks/{id}`                 | Partially update a task             | 200 / 400 / 404 / 422|
+| DELETE | `/tasks/{id}`                 | Delete a task                       | 204 / 404            |
+| GET    | `/projects`                   | List all projects                   | 200                  |
+| GET    | `/projects/{id}`              | Get one project                     | 200 / 404            |
+| GET    | `/projects/{id}/tasks`        | List tasks in a project             | 200 / 404            |
+| POST   | `/projects`                   | Create a project                    | 201 / 422            |
+| PATCH  | `/projects/{id}`              | Partially update a project          | 200 / 404 / 422      |
+| DELETE | `/projects/{id}`              | Delete a project (unlinks its tasks)| 204 / 404            |
+
+`POST`/`PATCH` on `/tasks` with a non-existent `project_id` return **400**
+with `{"detail": {"error_code": "project_not_found", "project_id": N}}`.
 
 ### Create a task
 

@@ -6,10 +6,14 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Label, Static
+from textual.widgets import Button, Checkbox, Input, Label, Select, Static
 
-from systema2.models import Task, TaskCreate, TaskUpdate
-from systema2.repository import RepositoryError, get_repository
+from systema2.models import Project, Task, TaskCreate, TaskUpdate
+from systema2.repository import (
+    ProjectNotFoundError,
+    RepositoryError,
+    get_repository,
+)
 
 FORM_CSS = """
 TaskFormScreen {
@@ -31,26 +35,14 @@ TaskFormScreen {
     padding-bottom: 1;
 }
 
-#dialog Label.field {
-    padding-top: 1;
-}
-
-#dialog #error {
-    color: $error;
-    padding-top: 1;
-    height: auto;
-}
-
-#dialog Horizontal {
-    height: auto;
-    align: right middle;
-    padding-top: 1;
-}
-
-#dialog Button {
-    margin-left: 2;
-}
+#dialog Label.field { padding-top: 1; }
+#dialog #error { color: $error; padding-top: 1; height: auto; }
+#dialog Horizontal { height: auto; align: right middle; padding-top: 1; }
+#dialog Button { margin-left: 2; }
 """
+
+# Sentinel value used in Select for "no project".
+_NO_PROJECT = 0
 
 
 class TaskFormScreen(ModalScreen[Task | None]):
@@ -62,11 +54,41 @@ class TaskFormScreen(ModalScreen[Task | None]):
         Binding("ctrl+s", "submit", "Save"),
     ]
 
-    def __init__(self, *, title: str, task: Task | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        title: str,
+        task: Task | None = None,
+        projects: list[Project] | None = None,
+    ) -> None:
         super().__init__()
         self._title = title
         # NOTE: don't use `self._task` — Textual's MessagePump owns that name.
         self._task_obj = task
+        self._projects = projects or []
+
+    # ---- project select helpers ---------------------------------------
+
+    def _project_options(self) -> list[tuple[str, int]]:
+        opts: list[tuple[str, int]] = [("(no project)", _NO_PROJECT)]
+        for p in self._projects:
+            label = f"#{p.id} {p.name}"
+            assert p.id is not None
+            opts.append((label, p.id))
+        return opts
+
+    def _initial_project_value(self) -> int:
+        if self._task_obj and self._task_obj.project_id is not None:
+            return self._task_obj.project_id
+        return _NO_PROJECT
+
+    def _selected_project_id(self) -> int | None:
+        value = self.query_one("#project", Select).value
+        if value == Select.BLANK or value == _NO_PROJECT:
+            return None
+        return int(value)  # type: ignore[arg-type]
+
+    # ---- compose ------------------------------------------------------
 
     def compose(self) -> ComposeResult:
         t = self._task_obj
@@ -88,6 +110,13 @@ class TaskFormScreen(ModalScreen[Task | None]):
                 placeholder="Optional description",
                 id="description",
             )
+            yield Label("Project", classes="field")
+            yield Select(
+                options=self._project_options(),
+                value=self._initial_project_value(),
+                allow_blank=False,
+                id="project",
+            )
             yield Checkbox("Completed", value=initial_completed, id="completed")
             yield Static("", id="error")
             with Horizontal():
@@ -97,7 +126,7 @@ class TaskFormScreen(ModalScreen[Task | None]):
     def on_mount(self) -> None:
         self.query_one("#title", Input).focus()
 
-    # ---- actions -------------------------------------------------------
+    # ---- actions ------------------------------------------------------
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -111,36 +140,54 @@ class TaskFormScreen(ModalScreen[Task | None]):
         elif event.button.id == "save":
             self._submit()
 
-    # ---- subclass hook -------------------------------------------------
+    # ---- subclass hook ------------------------------------------------
 
     def _submit(self) -> None:  # pragma: no cover - overridden
         raise NotImplementedError
 
-    def _collect(self) -> tuple[str, str | None, bool]:
+    def _collect(self) -> tuple[str, str | None, bool, int | None]:
         title = self.query_one("#title", Input).value.strip()
         desc_raw = self.query_one("#description", Input).value.strip()
         completed = self.query_one("#completed", Checkbox).value
-        return title, desc_raw or None, completed
+        project_id = self._selected_project_id()
+        return title, desc_raw or None, completed, project_id
 
     def _show_error(self, message: str) -> None:
         self.query_one("#error", Static).update(message)
 
 
 class AddTaskScreen(TaskFormScreen):
-    def __init__(self) -> None:
-        super().__init__(title="Add Task")
+    def __init__(
+        self,
+        *,
+        projects: list[Project] | None = None,
+        default_project_id: int | None = None,
+    ) -> None:
+        super().__init__(title="Add Task", projects=projects)
+        self._default_project_id = default_project_id
+
+    def _initial_project_value(self) -> int:  # type: ignore[override]
+        if self._default_project_id is not None:
+            return self._default_project_id
+        return super()._initial_project_value()
 
     def _submit(self) -> None:
-        title, description, completed = self._collect()
+        title, description, completed, project_id = self._collect()
         try:
             payload = TaskCreate(
-                title=title, description=description, completed=completed
+                title=title,
+                description=description,
+                completed=completed,
+                project_id=project_id,
             )
         except Exception as exc:  # pydantic ValidationError
             self._show_error(str(exc))
             return
         try:
             task = get_repository().create_task(payload)
+        except ProjectNotFoundError as exc:
+            self._show_error(f"Project {exc.project_id} not found")
+            return
         except RepositoryError as exc:
             self._show_error(str(exc))
             return
@@ -148,15 +195,25 @@ class AddTaskScreen(TaskFormScreen):
 
 
 class EditTaskScreen(TaskFormScreen):
-    def __init__(self, task: Task) -> None:
-        super().__init__(title=f"Edit Task #{task.id}", task=task)
+    def __init__(
+        self,
+        task: Task,
+        *,
+        projects: list[Project] | None = None,
+    ) -> None:
+        super().__init__(
+            title=f"Edit Task #{task.id}", task=task, projects=projects
+        )
         self._task_id = task.id
 
     def _submit(self) -> None:
-        title, description, completed = self._collect()
+        title, description, completed, project_id = self._collect()
         try:
             payload = TaskUpdate(
-                title=title, description=description, completed=completed
+                title=title,
+                description=description,
+                completed=completed,
+                project_id=project_id,
             )
         except Exception as exc:
             self._show_error(str(exc))
@@ -164,6 +221,9 @@ class EditTaskScreen(TaskFormScreen):
         assert self._task_id is not None
         try:
             task = get_repository().update_task(self._task_id, payload)
+        except ProjectNotFoundError as exc:
+            self._show_error(f"Project {exc.project_id} not found")
+            return
         except RepositoryError as exc:
             self._show_error(str(exc))
             return
