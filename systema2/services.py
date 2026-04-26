@@ -9,6 +9,8 @@ the API layer translates into HTTP responses.
 
 from __future__ import annotations
 
+from datetime import date
+
 from sqlmodel import Session, select
 
 from systema2 import database
@@ -56,6 +58,7 @@ def list_tasks(
     project_id: int | None = None,
     unassigned: bool = False,
     priority: Priority | None = None,
+    due_before: date | None = None,
 ) -> list[Task]:
     stmt = select(Task).order_by(Task.id)
     if unassigned:
@@ -64,6 +67,9 @@ def list_tasks(
         stmt = stmt.where(Task.project_id == project_id)
     if priority is not None:
         stmt = stmt.where(Task.priority == priority)
+    if due_before is not None:
+        stmt = stmt.where(Task.due_date.is_not(None))  # type: ignore[union-attr]
+        stmt = stmt.where(Task.due_date <= due_before)
     return list(session.exec(stmt).all())
 
 
@@ -184,6 +190,7 @@ def list_tasks_std(
     project_id: int | None = None,
     unassigned: bool = False,
     priority: Priority | None = None,
+    due_before: date | None = None,
 ) -> list[Task]:
     with _session() as s:
         return list_tasks(
@@ -191,6 +198,7 @@ def list_tasks_std(
             project_id=project_id,
             unassigned=unassigned,
             priority=priority,
+            due_before=due_before,
         )
 
 

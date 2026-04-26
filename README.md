@@ -7,8 +7,9 @@ Managed with **uv**.
 
 - Tasks and Projects, with tasks optionally linked to a project
 - Task priority (**H**igh / **M**edium / **L**ow, default Medium)
+- Optional task due date (ISO `YYYY-MM-DD`); overdue tasks highlighted
 - CRUD endpoints for both; deleting a project unlinks its tasks
-- `/tasks?project_id=N`, `?unassigned=true`, `?priority=H` filters
+- `/tasks?project_id=N`, `?unassigned=true`, `?priority=H`, `?due_before=YYYY-MM-DD` filters
 - Automatic request validation via Pydantic/SQLModel schemas
 - Auto-generated OpenAPI docs at `/docs` and `/redoc`
 - SQLite database auto-created on startup via a FastAPI lifespan handler
@@ -55,6 +56,12 @@ uv run systema2 update 2 --clear-project
 uv run systema2 create "ship it" -P H
 uv run systema2 update 1 -P L
 uv run systema2 list -P H          # filter by priority
+
+# Due date (YYYY-MM-DD, optional)
+uv run systema2 create "review PR" -D 2030-05-15
+uv run systema2 update 1 -D 2030-06-01
+uv run systema2 update 1 --clear-due
+uv run systema2 list --due-before 2030-12-31
 
 # TUI
 uv run systema2 tui
@@ -132,6 +139,7 @@ systema2/
 | `description` | `str \| None`   | Optional, up to 2000 chars         |
 | `completed`   | `bool`          | Defaults to `false`                |
 | `priority`    | `"H"`/`"M"`/`"L"` | High / Medium / Low, default `"M"` |
+| `due_date`    | `date \| None`  | ISO `YYYY-MM-DD`; overdue tasks are rendered in red |
 | `project_id`  | `int \| None`   | FK to `project.id`; `None` = no project |
 | `created_at`  | `datetime` (UTC)| Set on creation                    |
 | `updated_at`  | `datetime` (UTC)| Updated on every successful PATCH  |

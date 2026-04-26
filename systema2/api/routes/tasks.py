@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlmodel import Session
 
@@ -26,6 +28,10 @@ def list_tasks(
     priority: Priority | None = Query(
         None, description="Filter to tasks with this priority (H/M/L)."
     ),
+    due_before: date | None = Query(
+        None,
+        description="Return only tasks with a due_date on or before this date.",
+    ),
     session: Session = Depends(get_session),
 ) -> list[Task]:
     return services.list_tasks(
@@ -33,6 +39,7 @@ def list_tasks(
         project_id=project_id,
         unassigned=unassigned,
         priority=priority,
+        due_before=due_before,
     )
 
 

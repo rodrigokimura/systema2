@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from rich.console import Console
 from rich.table import Table
 
@@ -20,6 +22,15 @@ def _priority_cell(p: Priority) -> str:
     return f"[{_PRIORITY_STYLE[p]}]{p.value}[/{_PRIORITY_STYLE[p]}]"
 
 
+def _due_cell(due: date | None, *, completed: bool) -> str:
+    if due is None:
+        return ""
+    iso = due.isoformat()
+    if not completed and due < date.today():
+        return f"[bold red]{iso}[/bold red]"
+    return iso
+
+
 def render_task(task: Task) -> None:
     table = Table(show_header=True, header_style="bold")
     table.add_column("Field")
@@ -29,6 +40,7 @@ def render_task(task: Task) -> None:
     table.add_row("description", task.description or "")
     table.add_row("completed", "✓" if task.completed else "✗")
     table.add_row("priority", _priority_cell(task.priority))
+    table.add_row("due_date", _due_cell(task.due_date, completed=task.completed))
     table.add_row(
         "project_id", str(task.project_id) if task.project_id is not None else ""
     )
@@ -47,6 +59,7 @@ def render_task_list(tasks: list[Task]) -> None:
     table.add_column("Title")
     table.add_column("Description")
     table.add_column("Pri", justify="center")
+    table.add_column("Due")
     table.add_column("Project", justify="right")
     table.add_column("Done", justify="center")
     for t in tasks:
@@ -55,6 +68,7 @@ def render_task_list(tasks: list[Task]) -> None:
             t.title,
             t.description or "",
             _priority_cell(t.priority),
+            _due_cell(t.due_date, completed=t.completed),
             str(t.project_id) if t.project_id is not None else "",
             "✓" if t.completed else "✗",
         )
