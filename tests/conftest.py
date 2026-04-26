@@ -12,6 +12,7 @@ from sqlmodel.pool import StaticPool
 from systema2 import database as database_module
 from systema2.api import app as fastapi_app
 from systema2.database import get_session
+from systema2.repository import HttpTaskRepository
 
 
 def _make_in_memory_engine():
@@ -71,3 +72,20 @@ def db_engine(monkeypatch: pytest.MonkeyPatch) -> Generator[object, None, None]:
 
     yield engine
     engine.dispose()
+
+
+@pytest.fixture
+def http_repo_against_app(
+    db_engine, monkeypatch: pytest.MonkeyPatch
+) -> HttpTaskRepository:
+    """An HttpTaskRepository whose httpx.Client drives the in-process FastAPI app.
+
+    The API uses the same ``db_engine`` (patched in conftest), so CRUD
+    through HTTP is observably equivalent to local CRUD.
+    """
+
+    def _client_factory(self: HttpTaskRepository):
+        return TestClient(fastapi_app, base_url=self._base_url)
+
+    monkeypatch.setattr(HttpTaskRepository, "_client", _client_factory)
+    return HttpTaskRepository(base_url="http://testserver")

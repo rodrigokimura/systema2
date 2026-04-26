@@ -17,6 +17,7 @@ import httpx
 from systema2 import services
 from systema2.config import Mode, get_api_url, get_mode
 from systema2.models import (
+    Priority,
     Project,
     ProjectCreate,
     ProjectUpdate,
@@ -45,6 +46,7 @@ class TaskRepository(Protocol):
         *,
         project_id: int | None = None,
         unassigned: bool = False,
+        priority: Priority | None = None,
     ) -> list[Task]: ...
     def get_task(self, task_id: int) -> Task | None: ...
     def create_task(self, payload: TaskCreate) -> Task: ...
@@ -76,9 +78,12 @@ class LocalTaskRepository:
         *,
         project_id: int | None = None,
         unassigned: bool = False,
+        priority: Priority | None = None,
     ) -> list[Task]:
         return services.list_tasks_std(
-            project_id=project_id, unassigned=unassigned
+            project_id=project_id,
+            unassigned=unassigned,
+            priority=priority,
         )
 
     def get_task(self, task_id: int) -> Task | None:
@@ -170,12 +175,15 @@ class HttpTaskRepository:
         *,
         project_id: int | None = None,
         unassigned: bool = False,
+        priority: Priority | None = None,
     ) -> list[Task]:
         params: dict[str, object] = {}
         if unassigned:
             params["unassigned"] = "true"
         elif project_id is not None:
             params["project_id"] = project_id
+        if priority is not None:
+            params["priority"] = priority.value
         try:
             with self._client() as c:
                 r = c.get("/tasks", params=params)

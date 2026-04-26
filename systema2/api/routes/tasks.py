@@ -3,7 +3,7 @@ from sqlmodel import Session
 
 from systema2 import services
 from systema2.database import get_session
-from systema2.models import Task, TaskCreate, TaskRead, TaskUpdate
+from systema2.models import Priority, Task, TaskCreate, TaskRead, TaskUpdate
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -23,10 +23,16 @@ def list_tasks(
     unassigned: bool = Query(
         False, description="If true, return only tasks with no project."
     ),
+    priority: Priority | None = Query(
+        None, description="Filter to tasks with this priority (H/M/L)."
+    ),
     session: Session = Depends(get_session),
 ) -> list[Task]:
     return services.list_tasks(
-        session, project_id=project_id, unassigned=unassigned
+        session,
+        project_id=project_id,
+        unassigned=unassigned,
+        priority=priority,
     )
 
 

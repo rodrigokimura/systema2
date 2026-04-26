@@ -6,8 +6,9 @@ Managed with **uv**.
 ## Features
 
 - Tasks and Projects, with tasks optionally linked to a project
+- Task priority (**H**igh / **M**edium / **L**ow, default Medium)
 - CRUD endpoints for both; deleting a project unlinks its tasks
-- `/tasks?project_id=N` and `/tasks?unassigned=true` filters
+- `/tasks?project_id=N`, `?unassigned=true`, `?priority=H` filters
 - Automatic request validation via Pydantic/SQLModel schemas
 - Auto-generated OpenAPI docs at `/docs` and `/redoc`
 - SQLite database auto-created on startup via a FastAPI lifespan handler
@@ -49,6 +50,11 @@ uv run systema2 create "clean fridge" -p 1
 uv run systema2 list -p 1          # filter by project
 uv run systema2 list --unassigned  # tasks with no project
 uv run systema2 update 2 --clear-project
+
+# Task priority (H/M/L, default M)
+uv run systema2 create "ship it" -P H
+uv run systema2 update 1 -P L
+uv run systema2 list -P H          # filter by priority
 
 # TUI
 uv run systema2 tui
@@ -125,6 +131,7 @@ systema2/
 | `title`       | `str`           | Required, 1–200 chars, indexed     |
 | `description` | `str \| None`   | Optional, up to 2000 chars         |
 | `completed`   | `bool`          | Defaults to `false`                |
+| `priority`    | `"H"`/`"M"`/`"L"` | High / Medium / Low, default `"M"` |
 | `project_id`  | `int \| None`   | FK to `project.id`; `None` = no project |
 | `created_at`  | `datetime` (UTC)| Set on creation                    |
 | `updated_at`  | `datetime` (UTC)| Updated on every successful PATCH  |

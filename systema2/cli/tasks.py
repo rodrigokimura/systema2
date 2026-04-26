@@ -6,7 +6,7 @@ import typer
 
 from systema2.cli._render import console, render_task, render_task_list
 from systema2.database import init_db_if_local
-from systema2.models import TaskCreate, TaskUpdate
+from systema2.models import Priority, TaskCreate, TaskUpdate
 from systema2.repository import (
     ProjectNotFoundError,
     RepositoryError,
@@ -32,6 +32,9 @@ def list_tasks(
     unassigned: bool = typer.Option(
         False, "--unassigned", help="Show only tasks with no project."
     ),
+    priority: Priority | None = typer.Option(
+        None, "--priority", "-P", help="Filter to this priority (H/M/L)."
+    ),
 ) -> None:
     """List all tasks."""
     if project is not None and unassigned:
@@ -40,7 +43,9 @@ def list_tasks(
 
     repo = _repo()
     try:
-        tasks = repo.list_tasks(project_id=project, unassigned=unassigned)
+        tasks = repo.list_tasks(
+            project_id=project, unassigned=unassigned, priority=priority
+        )
     except RepositoryError as exc:
         _handle_repo_error(exc)
         return
@@ -58,6 +63,12 @@ def create_task(
     project: int | None = typer.Option(
         None, "--project", "-p", help="Assign to this project id."
     ),
+    priority: Priority = typer.Option(
+        Priority.MEDIUM,
+        "--priority",
+        "-P",
+        help="Task priority: H (high), M (medium), L (low).",
+    ),
 ) -> None:
     """Create a new task."""
     repo = _repo()
@@ -65,6 +76,7 @@ def create_task(
         title=title,
         description=description,
         completed=completed,
+        priority=priority,
         project_id=project,
     )
     try:
@@ -92,6 +104,9 @@ def update_task(
     clear_project: bool = typer.Option(
         False, "--clear-project", help="Unassign the task from its project."
     ),
+    priority: Priority | None = typer.Option(
+        None, "--priority", "-P", help="Set task priority (H/M/L)."
+    ),
 ) -> None:
     """Update fields on an existing task. Only provided options are changed."""
     if project is not None and clear_project:
@@ -108,6 +123,8 @@ def update_task(
         raw["description"] = description
     if completed is not None:
         raw["completed"] = completed
+    if priority is not None:
+        raw["priority"] = priority
     if project is not None:
         raw["project_id"] = project
     elif clear_project:

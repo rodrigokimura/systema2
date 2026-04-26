@@ -8,7 +8,7 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label, Select, Static
 
-from systema2.models import Project, Task, TaskCreate, TaskUpdate
+from systema2.models import Priority, Project, Task, TaskCreate, TaskUpdate
 from systema2.repository import (
     ProjectNotFoundError,
     RepositoryError,
@@ -43,6 +43,12 @@ TaskFormScreen {
 
 # Sentinel value used in Select for "no project".
 _NO_PROJECT = 0
+
+_PRIORITY_OPTIONS: list[tuple[str, str]] = [
+    ("High (H)", Priority.HIGH.value),
+    ("Medium (M)", Priority.MEDIUM.value),
+    ("Low (L)", Priority.LOW.value),
+]
 
 
 class TaskFormScreen(ModalScreen[Task | None]):
@@ -90,6 +96,11 @@ class TaskFormScreen(ModalScreen[Task | None]):
 
     # ---- compose ------------------------------------------------------
 
+    def _initial_priority(self) -> str:
+        if self._task_obj is not None:
+            return self._task_obj.priority.value
+        return Priority.MEDIUM.value
+
     def compose(self) -> ComposeResult:
         t = self._task_obj
         initial_title = t.title if t else ""
@@ -109,6 +120,13 @@ class TaskFormScreen(ModalScreen[Task | None]):
                 value=initial_desc,
                 placeholder="Optional description",
                 id="description",
+            )
+            yield Label("Priority", classes="field")
+            yield Select(
+                options=_PRIORITY_OPTIONS,
+                value=self._initial_priority(),
+                allow_blank=False,
+                id="priority",
             )
             yield Label("Project", classes="field")
             yield Select(
@@ -145,12 +163,14 @@ class TaskFormScreen(ModalScreen[Task | None]):
     def _submit(self) -> None:  # pragma: no cover - overridden
         raise NotImplementedError
 
-    def _collect(self) -> tuple[str, str | None, bool, int | None]:
+    def _collect(self) -> tuple[str, str | None, bool, Priority, int | None]:
         title = self.query_one("#title", Input).value.strip()
         desc_raw = self.query_one("#description", Input).value.strip()
         completed = self.query_one("#completed", Checkbox).value
+        priority_value = self.query_one("#priority", Select).value
+        priority = Priority(priority_value)  # type: ignore[arg-type]
         project_id = self._selected_project_id()
-        return title, desc_raw or None, completed, project_id
+        return title, desc_raw or None, completed, priority, project_id
 
     def _show_error(self, message: str) -> None:
         self.query_one("#error", Static).update(message)
@@ -172,12 +192,13 @@ class AddTaskScreen(TaskFormScreen):
         return super()._initial_project_value()
 
     def _submit(self) -> None:
-        title, description, completed, project_id = self._collect()
+        title, description, completed, priority, project_id = self._collect()
         try:
             payload = TaskCreate(
                 title=title,
                 description=description,
                 completed=completed,
+                priority=priority,
                 project_id=project_id,
             )
         except Exception as exc:  # pydantic ValidationError
@@ -207,12 +228,13 @@ class EditTaskScreen(TaskFormScreen):
         self._task_id = task.id
 
     def _submit(self) -> None:
-        title, description, completed, project_id = self._collect()
+        title, description, completed, priority, project_id = self._collect()
         try:
             payload = TaskUpdate(
                 title=title,
                 description=description,
                 completed=completed,
+                priority=priority,
                 project_id=project_id,
             )
         except Exception as exc:
