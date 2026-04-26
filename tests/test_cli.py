@@ -119,3 +119,23 @@ def test_cli_delete_not_found(cli_engine, runner: CliRunner) -> None:
     result = runner.invoke(cli_module.app, ["delete", "999", "--yes"])
     assert result.exit_code == 1
     assert "not found" in result.output
+
+
+def test_cli_tui_invokes_app(
+    cli_engine, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`systema2 tui` should instantiate Systema2App and call .run()."""
+    calls: list[str] = []
+
+    class FakeApp:
+        def run(self) -> None:
+            calls.append("run")
+
+    # Patch the class inside the tui module so the CLI's lazy import picks it up.
+    from systema2 import tui as tui_module
+
+    monkeypatch.setattr(tui_module, "Systema2App", FakeApp)
+
+    result = runner.invoke(cli_module.app, ["tui"])
+    assert result.exit_code == 0, result.output
+    assert calls == ["run"]
