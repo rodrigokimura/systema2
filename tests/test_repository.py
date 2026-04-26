@@ -1,0 +1,188 @@
+"""Tests for the repository layer and mode selection."""
+
+from __future__ import annotations
+
+import pytest
+
+from systema2 import repository as repo_module
+from systema2.config import Mode, get_mode
+from systema2.models import TaskCreate, TaskUpdate
+from systema2.repository import (
+    HttpTaskRepository,
+    LocalTaskRepository,
+    RepositoryError,
+    get_repository,
+)
+
+
+# ---------------------------------------------------------------------------
+# Mode selection
+# ---------------------------------------------------------------------------
+
+
+def test_default_mode_is_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SYSTEMA2_MODE", raising=False)
+    assert get_mode() is Mode.LOCAL
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ("local", Mode.LOCAL),
+        ("LOCAL", Mode.LOCAL),
+        ("client", Mode.CLIENT),
+        ("server", Mode.SERVER),
+    ],
+)
+def test_mode_from_env(
+    monkeypatch: pytest.MonkeyPatch, value: str, expected: Mode
+) -> None:
+    monkeypatch.setenv("SYSTEMA2_MODE", value)
+    assert get_mode() is expected
+
+
+def test_invalid_mode_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SYSTEMA2_MODE", "bogus")
+    with pytest.raises(ValueError, match="Invalid SYSTEMA2_MODE"):
+        get_mode()
+
+
+def test_get_repository_local(
+    monkeypatch: pytest.MonkeyPatch, db_engine
+) -> None:
+    monkeypatch.setenv("SYSTEMA2_MODE", "local")
+    assert isinstance(get_repository(), LocalTaskRepository)
+
+
+def test_get_repository_server_uses_local(
+    monkeypatch: pytest.MonkeyPatch, db_engine
+) -> None:
+    monkeypatch.setenv("SYSTEMA2_MODE", "server")
+    assert isinstance(get_repository(), LocalTaskRepository)
+
+
+def test_get_repository_client(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SYSTEMA2_MODE", "client")
+    monkeypatch.setenv("SYSTEMA2_API_URL", "http://example.test:9999")
+    repo = get_repository()
+    assert isinstance(repo, HttpTaskRepository)
+    assert repo._base_url == "http://example.test:9999"
+
+
+# ---------------------------------------------------------------------------
+# LocalTaskRepository (round-trips through the service layer + in-memory DB)
+# ---------------------------------------------------------------------------
+
+
+def test_local_repository_crud(db_engine) -> None:
+    repo = LocalTaskRepository()
+
+    assert repo.list_tasks() == []
+
+    created = repo.create_task(
+        TaskCreate(title="write docs", description="cover modes")
+    )
+    assert created.id is not None
+    assert created.title == "write docs"
+
+    assert len(repo.list_tasks()) == 1
+
+    fetched = repo.get_task(created.id)
+    assert fetched is not None
+    assert fetched.title == "write docs"
+
+    updated = repo.update_task(
+        created.id, TaskUpdate(title="write docs v2", completed=True)
+    )
+    assert updated is not None
+    assert updated.title == "write docs v2"
+    assert updated.completed is True
+
+    assert repo.delete_task(created.id) is True
+    assert repo.get_task(created.id) is None
+    assert repo.delete_task(created.id) is False
+
+
+# ---------------------------------------------------------------------------
+# HttpTaskRepository against the in-process FastAPI app via httpx.MockTransport
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def http_repo_against_app(
+    db_engine, monkeypatch: pytest.MonkeyPatch
+) -> HttpTaskRepository:
+    """An HttpTaskRepository whose httpx.Client talks to the live FastAPI app.
+
+    The API uses the same ``db_engine`` (patched in conftest), so CRUD through
+    HTTP is observably equivalent to local CRUD. We use ``fastapi.testclient
+    .TestClient`` (itself an ``httpx.Client`` subclass) so the sync
+    repository code can drive the ASGI app without an event loop.
+    """
+    from fastapi.testclient import TestClient
+
+    from systema2.api import app as fastapi_app
+
+    def _client_factory(self: HttpTaskRepository):
+        return TestClient(fastapi_app, base_url=self._base_url)
+
+    monkeypatch.setattr(HttpTaskRepository, "_client", _client_factory)
+    return HttpTaskRepository(base_url="http://testserver")
+
+
+def test_http_repository_crud(http_repo_against_app: HttpTaskRepository) -> None:
+    repo = http_repo_against_app
+
+    assert repo.list_tasks() == []
+
+    created = repo.create_task(TaskCreate(title="remote task"))
+    assert created.id is not None
+    assert created.title == "remote task"
+
+    fetched = repo.get_task(created.id)
+    assert fetched is not None
+    assert fetched.title == "remote task"
+
+    assert repo.get_task(9999) is None
+
+    updated = repo.update_task(
+        created.id, TaskUpdate(completed=True)
+    )
+    assert updated is not None
+    assert updated.completed is True
+    # Partial update must not null out title.
+    assert updated.title == "remote task"
+
+    missing = repo.update_task(9999, TaskUpdate(title="nope"))
+    assert missing is None
+
+    assert repo.delete_task(created.id) is True
+    assert repo.delete_task(created.id) is False
+
+
+def test_http_repository_network_error_wrapped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Unreachable server -> RepositoryError (not a raw httpx exception)."""
+    # Point at a closed port on localhost.
+    repo = HttpTaskRepository(base_url="http://127.0.0.1:1", timeout=0.5)
+    with pytest.raises(RepositoryError, match="Could not reach"):
+        repo.list_tasks()
+
+
+def test_client_mode_cli_network_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLI in client mode exits non-zero when the server is unreachable."""
+    from typer.testing import CliRunner
+
+    from systema2.cli import app as cli_app
+
+    monkeypatch.setenv("SYSTEMA2_MODE", "client")
+    monkeypatch.setenv("SYSTEMA2_API_URL", "http://127.0.0.1:1")
+
+    runner = CliRunner()
+    result = runner.invoke(cli_app, ["list"])
+    # Exit code 2 is our chosen code for repository errors.
+    assert result.exit_code == 2
+    assert "Could not reach" in result.output

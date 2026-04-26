@@ -46,24 +46,28 @@ def client_fixture(session: Session) -> Generator[TestClient, None, None]:
 
 @pytest.fixture
 def db_engine(monkeypatch: pytest.MonkeyPatch) -> Generator[object, None, None]:
-    """Swap the module-level engine for an in-memory one.
+    """Swap the module-level engine for an in-memory one (local mode).
 
     Used by CLI and TUI tests. The service layer resolves the engine lazily
     via ``systema2.database.engine``, so patching this one attribute is
-    sufficient. We also stub ``init_db`` so the CLI/TUI don't re-create
-    tables on the real engine.
+    sufficient. We also stub ``init_db``/``init_db_if_local`` so the CLI/TUI
+    don't re-create tables on the real engine.
     """
+    # Force local mode regardless of the host shell's environment.
+    monkeypatch.setenv("SYSTEMA2_MODE", "local")
+
     engine = _make_in_memory_engine()
     monkeypatch.setattr(database_module, "engine", engine)
     monkeypatch.setattr(database_module, "init_db", lambda: None)
+    monkeypatch.setattr(database_module, "init_db_if_local", lambda: None)
 
-    # Patch the name where each module imported it (`from ... import init_db`).
+    # Patch the name where each module imported it (`from ... import ...`).
     import systema2.cli.tasks as cli_tasks
     import systema2.cli.tui as cli_tui
     import systema2.tui.app as tui_app
 
     for mod in (cli_tasks, cli_tui, tui_app):
-        monkeypatch.setattr(mod, "init_db", lambda: None)
+        monkeypatch.setattr(mod, "init_db_if_local", lambda: None)
 
     yield engine
     engine.dispose()

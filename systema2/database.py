@@ -19,6 +19,14 @@ def init_db() -> None:
     SQLModel.metadata.create_all(engine)
 
 
+def init_db_if_local() -> None:
+    """Initialize the DB only when not running as a pure HTTP client."""
+    from systema2.config import Mode, get_mode
+
+    if get_mode() is not Mode.CLIENT:
+        init_db()
+
+
 def get_session() -> Generator[Session, None, None]:
     with Session(engine) as session:
         yield session
