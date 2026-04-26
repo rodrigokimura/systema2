@@ -8,8 +8,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label, Static
 
-from systema2 import services
 from systema2.models import Task, TaskCreate, TaskUpdate
+from systema2.repository import RepositoryError, get_repository
 
 FORM_CSS = """
 TaskFormScreen {
@@ -139,7 +139,12 @@ class AddTaskScreen(TaskFormScreen):
         except Exception as exc:  # pydantic ValidationError
             self._show_error(str(exc))
             return
-        self.dismiss(services.create_task_std(payload))
+        try:
+            task = get_repository().create_task(payload)
+        except RepositoryError as exc:
+            self._show_error(str(exc))
+            return
+        self.dismiss(task)
 
 
 class EditTaskScreen(TaskFormScreen):
@@ -157,7 +162,11 @@ class EditTaskScreen(TaskFormScreen):
             self._show_error(str(exc))
             return
         assert self._task_id is not None
-        task = services.update_task_std(self._task_id, payload)
+        try:
+            task = get_repository().update_task(self._task_id, payload)
+        except RepositoryError as exc:
+            self._show_error(str(exc))
+            return
         if task is None:
             self._show_error("Task no longer exists.")
             return

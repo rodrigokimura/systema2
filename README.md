@@ -10,6 +10,8 @@ Managed with **uv**.
 - Automatic request validation via Pydantic/SQLModel schemas
 - Auto-generated OpenAPI docs at `/docs` and `/redoc`
 - SQLite database auto-created on startup via a FastAPI lifespan handler
+- Typer CLI and Textual TUI that share the same CRUD code
+- Three runtime modes (`local` · `client` · `server`) switched via env var
 
 ## Requirements
 
@@ -24,23 +26,53 @@ cd systema2
 uv sync          # creates .venv and installs all deps from uv.lock
 ```
 
-## Running the server
+## Running
+
+### CLI / TUI (local mode — default)
 
 ```bash
+uv run systema2 create "buy milk" -d "2L, semi-skimmed"
+uv run systema2 list
+uv run systema2 update 1 --completed
+uv run systema2 delete 1 --yes
+uv run systema2 tui          # Textual UI
+```
+
+### Server
+
+```bash
+SYSTEMA2_MODE=server uv run systema2 serve --host 127.0.0.1 --port 8000
+# or equivalently:
 uv run main.py
 ```
 
-The API is then served at <http://127.0.0.1:8000>. Interactive docs:
+Interactive docs:
 
 - Swagger UI: <http://127.0.0.1:8000/docs>
 - ReDoc:      <http://127.0.0.1:8000/redoc>
 - OpenAPI:    <http://127.0.0.1:8000/openapi.json>
 
-For development with auto-reload:
+### Client mode (CLI/TUI over HTTP)
+
+Point the CLI/TUI at a running server instead of the local SQLite file:
 
 ```bash
-uv run uvicorn systema2.app:app --reload
+export SYSTEMA2_MODE=client
+export SYSTEMA2_API_URL=http://127.0.0.1:8000
+uv run systema2 list
+uv run systema2 tui
 ```
+
+### Modes
+
+| `SYSTEMA2_MODE` | CRUD backend                         | Uses DB? |
+|-----------------|--------------------------------------|----------|
+| `local` (default) | Direct SQLModel → SQLite           | yes      |
+| `server`        | Direct SQLModel → SQLite + serves API | yes      |
+| `client`        | HTTP calls to `SYSTEMA2_API_URL`     | no       |
+
+Other env vars: `SYSTEMA2_API_URL` (default `http://127.0.0.1:8000`),
+`SYSTEMA2_HOST`, `SYSTEMA2_PORT`.
 
 ## Project layout
 

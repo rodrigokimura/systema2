@@ -6,9 +6,9 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header
 
-from systema2 import services
-from systema2.database import init_db
+from systema2.database import init_db_if_local
 from systema2.models import Task
+from systema2.repository import RepositoryError, get_repository
 from systema2.tui.screens.delete import DeleteTaskScreen
 from systema2.tui.screens.form import AddTaskScreen, EditTaskScreen
 
@@ -38,7 +38,8 @@ class Systema2App(App[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        init_db()
+        init_db_if_local()
+        self._repo = get_repository()
         table = self.query_one(DataTable)
         table.add_columns("ID", "Title", "Description", "Done")
         self._reload()
@@ -48,7 +49,12 @@ class Systema2App(App[None]):
     def _reload(self) -> None:
         table = self.query_one(DataTable)
         table.clear()
-        for t in services.list_tasks_std():
+        try:
+            tasks = self._repo.list_tasks()
+        except RepositoryError as exc:
+            self.notify(str(exc), severity="error", timeout=6.0)
+            return
+        for t in tasks:
             table.add_row(
                 str(t.id),
                 t.title,
@@ -78,7 +84,11 @@ class Systema2App(App[None]):
         if task_id is None:
             self.notify("No task selected.", severity="warning")
             return None
-        task = services.get_task_std(task_id)
+        try:
+            task = self._repo.get_task(task_id)
+        except RepositoryError as exc:
+            self.notify(str(exc), severity="error", timeout=6.0)
+            return None
         if task is None:
             self.notify("Task not found.", severity="error")
             self._reload()

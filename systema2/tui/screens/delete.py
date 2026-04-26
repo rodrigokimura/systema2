@@ -8,8 +8,8 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
 from textual.widgets import Button, Label
 
-from systema2 import services
 from systema2.models import Task
+from systema2.repository import RepositoryError, get_repository
 
 
 class DeleteTaskScreen(ModalScreen[bool]):
@@ -77,5 +77,11 @@ class DeleteTaskScreen(ModalScreen[bool]):
 
     def _confirm(self) -> None:
         assert self._task_obj.id is not None
-        services.delete_task_std(self._task_obj.id)
+        try:
+            get_repository().delete_task(self._task_obj.id)
+        except RepositoryError:
+            # Leave the modal open; the app-level screen will show the error
+            # on reload. Dismiss as not-deleted so caller knows it failed.
+            self.dismiss(False)
+            return
         self.dismiss(True)

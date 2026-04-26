@@ -4,16 +4,32 @@ from __future__ import annotations
 
 import typer
 
-from systema2 import services
 from systema2.cli._render import console, render_task, render_task_list
-from systema2.database import init_db
+from systema2.database import init_db_if_local
 from systema2.models import TaskCreate, TaskUpdate
+from systema2.repository import RepositoryError, get_repository
+
+
+def _repo():
+    """Obtain repository, converting startup errors into CLI exits."""
+    init_db_if_local()
+    return get_repository()
+
+
+def _handle_repo_error(exc: RepositoryError) -> None:
+    console.print(f"[red]{exc}[/red]")
+    raise typer.Exit(code=2)
 
 
 def list_tasks() -> None:
     """List all tasks."""
-    init_db()
-    render_task_list(services.list_tasks_std())
+    repo = _repo()
+    try:
+        tasks = repo.list_tasks()
+    except RepositoryError as exc:
+        _handle_repo_error(exc)
+        return
+    render_task_list(tasks)
 
 
 def create_task(
@@ -26,9 +42,13 @@ def create_task(
     ),
 ) -> None:
     """Create a new task."""
-    init_db()
+    repo = _repo()
     payload = TaskCreate(title=title, description=description, completed=completed)
-    task = services.create_task_std(payload)
+    try:
+        task = repo.create_task(payload)
+    except RepositoryError as exc:
+        _handle_repo_error(exc)
+        return
     console.print(f"[green]Created task {task.id}[/green]")
     render_task(task)
 
@@ -42,7 +62,7 @@ def update_task(
     ),
 ) -> None:
     """Update fields on an existing task. Only provided options are changed."""
-    init_db()
+    repo = _repo()
     # Build dict only from explicitly-provided options so unset ones don't
     # overwrite existing fields with None.
     raw: dict[str, object] = {}
@@ -54,7 +74,12 @@ def update_task(
         raw["completed"] = completed
 
     payload = TaskUpdate(**raw)
-    task = services.update_task_std(task_id, payload)
+    try:
+        task = repo.update_task(task_id, payload)
+    except RepositoryError as exc:
+        _handle_repo_error(exc)
+        return
+
     if task is None:
         console.print(f"[red]Task {task_id} not found[/red]")
         raise typer.Exit(code=1)
@@ -73,8 +98,12 @@ def delete_task(
     ),
 ) -> None:
     """Delete a task by ID."""
-    init_db()
-    task = services.get_task_std(task_id)
+    repo = _repo()
+    try:
+        task = repo.get_task(task_id)
+    except RepositoryError as exc:
+        _handle_repo_error(exc)
+        return
     if task is None:
         console.print(f"[red]Task {task_id} not found[/red]")
         raise typer.Exit(code=1)
@@ -82,5 +111,9 @@ def delete_task(
     if not yes:
         typer.confirm(f"Delete task {task.id} ({task.title!r})?", abort=True)
 
-    services.delete_task_std(task_id)
+    try:
+        repo.delete_task(task_id)
+    except RepositoryError as exc:
+        _handle_repo_error(exc)
+        return
     console.print(f"[green]Deleted task {task_id}[/green]")

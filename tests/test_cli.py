@@ -108,3 +108,27 @@ def test_cli_tui_invokes_app(
     result = runner.invoke(cli_app, ["tui"])
     assert result.exit_code == 0, result.output
     assert calls == ["run"]
+
+
+def test_cli_serve_invokes_uvicorn(
+    db_engine, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`systema2 serve` should call uvicorn.run with the configured host/port."""
+    captured: dict[str, object] = {}
+
+    import uvicorn
+
+    def fake_run(app: str, **kwargs: object) -> None:
+        captured["app"] = app
+        captured.update(kwargs)
+
+    monkeypatch.setattr(uvicorn, "run", fake_run)
+
+    result = runner.invoke(
+        cli_app, ["serve", "--host", "0.0.0.0", "--port", "9123"]
+    )
+    assert result.exit_code == 0, result.output
+    assert captured["app"] == "systema2.app:app"
+    assert captured["host"] == "0.0.0.0"
+    assert captured["port"] == 9123
+    assert captured["reload"] is False
