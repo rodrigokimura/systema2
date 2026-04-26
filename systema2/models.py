@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from enum import Enum
 
 import sqlalchemy as sa
@@ -77,6 +77,7 @@ class TaskBase(SQLModel):
         default=Priority.MEDIUM,
         sa_column=_priority_sa_column(),
     )
+    due_date: date | None = Field(default=None, index=True)
     project_id: int | None = Field(
         default=None, foreign_key="project.id", index=True
     )
@@ -97,7 +98,8 @@ class TaskUpdate(SQLModel):
     description: str | None = Field(default=None, max_length=2000)
     completed: bool | None = None
     priority: Priority | None = None
-    # ``None`` means "unassign"; omitted means "don't touch" (via exclude_unset).
+    # ``None`` means "clear"; omitted means "don't touch" (via exclude_unset).
+    due_date: date | None = None
     project_id: int | None = None
 
 

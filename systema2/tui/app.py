@@ -78,7 +78,7 @@ class Systema2App(App[None]):
         self._repo = get_repository()
 
         table = self.query_one(DataTable)
-        table.add_columns("ID", "Title", "Description", "Pri", "Done")
+        table.add_columns("ID", "Title", "Description", "Pri", "Due", "Done")
 
         await self._reload_projects()
         self._reload_tasks()
@@ -165,6 +165,8 @@ class Systema2App(App[None]):
         except RepositoryError as exc:
             self.notify(str(exc), severity="error", timeout=6.0)
             return
+        from datetime import date as _date
+
         from rich.text import Text
 
         _pri_style = {
@@ -172,14 +174,24 @@ class Systema2App(App[None]):
             "M": "yellow",
             "L": "dim",
         }
+        today = _date.today()
 
         for t in tasks:
             pri_cell = Text(t.priority.value, style=_pri_style[t.priority.value])
+            if t.due_date is None:
+                due_cell: object = ""
+            else:
+                iso = t.due_date.isoformat()
+                if not t.completed and t.due_date < today:
+                    due_cell = Text(iso, style="bold red")
+                else:
+                    due_cell = iso
             table.add_row(
                 str(t.id),
                 t.title,
                 t.description or "",
                 pri_cell,
+                due_cell,
                 "✓" if t.completed else "✗",
                 key=str(t.id),
             )

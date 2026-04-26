@@ -379,6 +379,7 @@ def test_e2e_json_via_api_matches_schema(
         "description",
         "completed",
         "priority",
+        "due_date",
         "project_id",
         "created_at",
         "updated_at",
@@ -592,6 +593,109 @@ def test_e2e_client_priority_round_trip(tmp_path: Path) -> None:
         assert "plain" not in r.stdout
 
         # Client never wrote a local DB.
+        assert not (client_cwd / "systema2.db").exists()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+# ---------------------------------------------------------------------------
+# Due dates — end-to-end
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_local_due_date_round_trip(workspace: Path) -> None:
+    env = {"SYSTEMA2_MODE": "local"}
+
+    _run(
+        ["create", "early", "-D", "2030-01-01"],
+        cwd=workspace,
+        env=env,
+    )
+    _run(
+        ["create", "late", "-D", "2030-12-31"],
+        cwd=workspace,
+        env=env,
+    )
+    _run(["create", "no-date"], cwd=workspace, env=env)
+
+    # Filter by due-before.
+    r = _run(
+        ["list", "--due-before", "2030-06-01"], cwd=workspace, env=env
+    )
+    assert "early" in r.stdout
+    assert "late" not in r.stdout
+    assert "no-date" not in r.stdout
+
+    # Set a due date on the no-date task in a fresh process.
+    _run(
+        ["update", "3", "-D", "2029-01-01"], cwd=workspace, env=env
+    )
+    r = _run(
+        ["list", "--due-before", "2029-06-01"], cwd=workspace, env=env
+    )
+    assert "no-date" in r.stdout
+
+    # Clear the due date.
+    _run(["update", "3", "--clear-due"], cwd=workspace, env=env)
+    r = _run(
+        ["list", "--due-before", "2029-06-01"], cwd=workspace, env=env
+    )
+    assert "no-date" not in r.stdout
+
+    # Invalid date input -> exit 2.
+    r = _run(
+        ["create", "bad", "-D", "tomorrow"],
+        cwd=workspace,
+        env=env,
+        check=False,
+    )
+    assert r.returncode == 2
+
+
+def test_e2e_client_due_date_round_trip(tmp_path: Path) -> None:
+    server_cwd = tmp_path / "server"
+    client_cwd = tmp_path / "client"
+    server_cwd.mkdir()
+    client_cwd.mkdir()
+
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+    proc = _spawn_server(server_cwd, port)
+    try:
+        _wait_for_server(base_url)
+        env = {"SYSTEMA2_MODE": "client", "SYSTEMA2_API_URL": base_url}
+
+        _run(
+            ["create", "deadline", "-D", "2030-07-04"],
+            cwd=client_cwd,
+            env=env,
+        )
+        _run(["create", "someday"], cwd=client_cwd, env=env)
+
+        # Verify via the API directly.
+        tasks = httpx.get(f"{base_url}/tasks", timeout=3.0).json()
+        due = {t["title"]: t["due_date"] for t in tasks}
+        assert due == {"deadline": "2030-07-04", "someday": None}
+
+        # Filter via the client CLI.
+        r = _run(
+            ["list", "--due-before", "2030-12-31"],
+            cwd=client_cwd,
+            env=env,
+        )
+        assert "deadline" in r.stdout
+        assert "someday" not in r.stdout
+
+        # Clear via the client CLI.
+        _run(["update", "1", "--clear-due"], cwd=client_cwd, env=env)
+        tasks = httpx.get(f"{base_url}/tasks", timeout=3.0).json()
+        assert all(t["due_date"] is None for t in tasks)
+
         assert not (client_cwd / "systema2.db").exists()
     finally:
         proc.terminate()

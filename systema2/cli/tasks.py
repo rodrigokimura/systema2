@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 import typer
 
 from systema2.cli._render import console, render_task, render_task_list
@@ -12,6 +14,18 @@ from systema2.repository import (
     RepositoryError,
     get_repository,
 )
+
+
+def _parse_date(value: str | None, *, option: str) -> date | None:
+    if value is None:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        console.print(
+            f"[red]Invalid {option} {value!r}: expected YYYY-MM-DD.[/red]"
+        )
+        raise typer.Exit(code=2) from exc
 
 
 def _repo():
@@ -35,16 +49,26 @@ def list_tasks(
     priority: Priority | None = typer.Option(
         None, "--priority", "-P", help="Filter to this priority (H/M/L)."
     ),
+    due_before: str | None = typer.Option(
+        None,
+        "--due-before",
+        help="Only tasks with a due date on or before YYYY-MM-DD.",
+    ),
 ) -> None:
     """List all tasks."""
     if project is not None and unassigned:
         console.print("[red]Use either --project or --unassigned, not both.[/red]")
         raise typer.Exit(code=2)
 
+    before = _parse_date(due_before, option="--due-before")
+
     repo = _repo()
     try:
         tasks = repo.list_tasks(
-            project_id=project, unassigned=unassigned, priority=priority
+            project_id=project,
+            unassigned=unassigned,
+            priority=priority,
+            due_before=before,
         )
     except RepositoryError as exc:
         _handle_repo_error(exc)
@@ -69,14 +93,19 @@ def create_task(
         "-P",
         help="Task priority: H (high), M (medium), L (low).",
     ),
+    due: str | None = typer.Option(
+        None, "--due", "-D", help="Due date (YYYY-MM-DD)."
+    ),
 ) -> None:
     """Create a new task."""
+    due_date = _parse_date(due, option="--due")
     repo = _repo()
     payload = TaskCreate(
         title=title,
         description=description,
         completed=completed,
         priority=priority,
+        due_date=due_date,
         project_id=project,
     )
     try:
@@ -107,6 +136,12 @@ def update_task(
     priority: Priority | None = typer.Option(
         None, "--priority", "-P", help="Set task priority (H/M/L)."
     ),
+    due: str | None = typer.Option(
+        None, "--due", "-D", help="Set due date (YYYY-MM-DD)."
+    ),
+    clear_due: bool = typer.Option(
+        False, "--clear-due", help="Clear the due date."
+    ),
 ) -> None:
     """Update fields on an existing task. Only provided options are changed."""
     if project is not None and clear_project:
@@ -114,6 +149,13 @@ def update_task(
             "[red]Use either --project or --clear-project, not both.[/red]"
         )
         raise typer.Exit(code=2)
+    if due is not None and clear_due:
+        console.print(
+            "[red]Use either --due or --clear-due, not both.[/red]"
+        )
+        raise typer.Exit(code=2)
+
+    due_date = _parse_date(due, option="--due")
 
     repo = _repo()
     raw: dict[str, object] = {}
@@ -125,6 +167,10 @@ def update_task(
         raw["completed"] = completed
     if priority is not None:
         raw["priority"] = priority
+    if due is not None:
+        raw["due_date"] = due_date
+    elif clear_due:
+        raw["due_date"] = None
     if project is not None:
         raw["project_id"] = project
     elif clear_project:

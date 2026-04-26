@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
@@ -101,6 +103,11 @@ class TaskFormScreen(ModalScreen[Task | None]):
             return self._task_obj.priority.value
         return Priority.MEDIUM.value
 
+    def _initial_due_date(self) -> str:
+        if self._task_obj is not None and self._task_obj.due_date is not None:
+            return self._task_obj.due_date.isoformat()
+        return ""
+
     def compose(self) -> ComposeResult:
         t = self._task_obj
         initial_title = t.title if t else ""
@@ -127,6 +134,12 @@ class TaskFormScreen(ModalScreen[Task | None]):
                 value=self._initial_priority(),
                 allow_blank=False,
                 id="priority",
+            )
+            yield Label("Due date (YYYY-MM-DD)", classes="field")
+            yield Input(
+                value=self._initial_due_date(),
+                placeholder="YYYY-MM-DD (leave blank for none)",
+                id="due_date",
             )
             yield Label("Project", classes="field")
             yield Select(
@@ -163,14 +176,31 @@ class TaskFormScreen(ModalScreen[Task | None]):
     def _submit(self) -> None:  # pragma: no cover - overridden
         raise NotImplementedError
 
-    def _collect(self) -> tuple[str, str | None, bool, Priority, int | None]:
+    class _InvalidDueDate(Exception):
+        """Raised when the due-date input isn't parseable."""
+
+    def _collect_due_date(self) -> date | None:
+        raw = self.query_one("#due_date", Input).value.strip()
+        if not raw:
+            return None
+        try:
+            return date.fromisoformat(raw)
+        except ValueError as exc:
+            raise self._InvalidDueDate(
+                f"Invalid due date {raw!r}: expected YYYY-MM-DD."
+            ) from exc
+
+    def _collect(
+        self,
+    ) -> tuple[str, str | None, bool, Priority, date | None, int | None]:
         title = self.query_one("#title", Input).value.strip()
         desc_raw = self.query_one("#description", Input).value.strip()
         completed = self.query_one("#completed", Checkbox).value
         priority_value = self.query_one("#priority", Select).value
         priority = Priority(priority_value)  # type: ignore[arg-type]
+        due_date = self._collect_due_date()
         project_id = self._selected_project_id()
-        return title, desc_raw or None, completed, priority, project_id
+        return title, desc_raw or None, completed, priority, due_date, project_id
 
     def _show_error(self, message: str) -> None:
         self.query_one("#error", Static).update(message)
@@ -192,13 +222,25 @@ class AddTaskScreen(TaskFormScreen):
         return super()._initial_project_value()
 
     def _submit(self) -> None:
-        title, description, completed, priority, project_id = self._collect()
+        try:
+            (
+                title,
+                description,
+                completed,
+                priority,
+                due_date,
+                project_id,
+            ) = self._collect()
+        except self._InvalidDueDate as exc:
+            self._show_error(str(exc))
+            return
         try:
             payload = TaskCreate(
                 title=title,
                 description=description,
                 completed=completed,
                 priority=priority,
+                due_date=due_date,
                 project_id=project_id,
             )
         except Exception as exc:  # pydantic ValidationError
@@ -228,13 +270,25 @@ class EditTaskScreen(TaskFormScreen):
         self._task_id = task.id
 
     def _submit(self) -> None:
-        title, description, completed, priority, project_id = self._collect()
+        try:
+            (
+                title,
+                description,
+                completed,
+                priority,
+                due_date,
+                project_id,
+            ) = self._collect()
+        except self._InvalidDueDate as exc:
+            self._show_error(str(exc))
+            return
         try:
             payload = TaskUpdate(
                 title=title,
                 description=description,
                 completed=completed,
                 priority=priority,
+                due_date=due_date,
                 project_id=project_id,
             )
         except Exception as exc:
