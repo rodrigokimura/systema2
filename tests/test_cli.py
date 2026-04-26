@@ -1,34 +1,11 @@
-from collections.abc import Generator
+from __future__ import annotations
 
 import pytest
-from sqlmodel import Session, SQLModel, create_engine, select
-from sqlmodel.pool import StaticPool
+from sqlmodel import Session, select
 from typer.testing import CliRunner
 
-from systema2 import cli as cli_module
-from systema2 import database as database_module
+from systema2.cli import app as cli_app
 from systema2.models import Task
-
-
-@pytest.fixture
-def cli_engine(monkeypatch: pytest.MonkeyPatch) -> Generator[object, None, None]:
-    """Swap the module-level engine for an in-memory one for CLI tests."""
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(engine)
-
-    # The CLI imports `engine` by name from systema2.database, so patch both.
-    monkeypatch.setattr(database_module, "engine", engine)
-    monkeypatch.setattr(cli_module, "engine", engine)
-    # init_db() would call create_all on the real engine; make it a no-op
-    # since we've already created tables on our test engine.
-    monkeypatch.setattr(cli_module, "init_db", lambda: None)
-
-    yield engine
-    engine.dispose()
 
 
 @pytest.fixture
@@ -36,15 +13,12 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
-def test_cli_create(cli_engine, runner: CliRunner) -> None:
-    result = runner.invoke(
-        cli_module.app,
-        ["create", "first task", "-d", "desc here"],
-    )
+def test_cli_create(db_engine, runner: CliRunner) -> None:
+    result = runner.invoke(cli_app, ["create", "first task", "-d", "desc here"])
     assert result.exit_code == 0, result.output
     assert "Created task 1" in result.output
 
-    with Session(cli_engine) as session:
+    with Session(db_engine) as session:
         tasks = list(session.exec(select(Task)).all())
     assert len(tasks) == 1
     assert tasks[0].title == "first task"
@@ -52,45 +26,40 @@ def test_cli_create(cli_engine, runner: CliRunner) -> None:
     assert tasks[0].completed is False
 
 
-def test_cli_create_validation_error(cli_engine, runner: CliRunner) -> None:
+def test_cli_create_validation_error(db_engine, runner: CliRunner) -> None:
     # Empty title violates min_length=1 on TaskCreate
-    result = runner.invoke(cli_module.app, ["create", ""])
+    result = runner.invoke(cli_app, ["create", ""])
     assert result.exit_code != 0
 
 
-def test_cli_list_empty(cli_engine, runner: CliRunner) -> None:
-    result = runner.invoke(cli_module.app, ["list"])
+def test_cli_list_empty(db_engine, runner: CliRunner) -> None:
+    result = runner.invoke(cli_app, ["list"])
     assert result.exit_code == 0
     assert "No tasks" in result.output
 
 
-def test_cli_update(cli_engine, runner: CliRunner) -> None:
-    runner.invoke(cli_module.app, ["create", "original"])
+def test_cli_update(db_engine, runner: CliRunner) -> None:
+    runner.invoke(cli_app, ["create", "original"])
 
-    result = runner.invoke(
-        cli_module.app,
-        ["update", "1", "-t", "renamed", "--completed"],
-    )
+    result = runner.invoke(cli_app, ["update", "1", "-t", "renamed", "--completed"])
     assert result.exit_code == 0, result.output
     assert "Updated task 1" in result.output
 
-    with Session(cli_engine) as session:
+    with Session(db_engine) as session:
         task = session.get(Task, 1)
     assert task is not None
     assert task.title == "renamed"
     assert task.completed is True
 
 
-def test_cli_update_partial_preserves_title(
-    cli_engine, runner: CliRunner
-) -> None:
+def test_cli_update_partial_preserves_title(db_engine, runner: CliRunner) -> None:
     """Regression: updating only --completed must not null out title."""
-    runner.invoke(cli_module.app, ["create", "keep me", "-d", "keep desc"])
+    runner.invoke(cli_app, ["create", "keep me", "-d", "keep desc"])
 
-    result = runner.invoke(cli_module.app, ["update", "1", "--completed"])
+    result = runner.invoke(cli_app, ["update", "1", "--completed"])
     assert result.exit_code == 0, result.output
 
-    with Session(cli_engine) as session:
+    with Session(db_engine) as session:
         task = session.get(Task, 1)
     assert task is not None
     assert task.title == "keep me"
@@ -98,31 +67,31 @@ def test_cli_update_partial_preserves_title(
     assert task.completed is True
 
 
-def test_cli_update_not_found(cli_engine, runner: CliRunner) -> None:
-    result = runner.invoke(cli_module.app, ["update", "999", "-t", "x"])
+def test_cli_update_not_found(db_engine, runner: CliRunner) -> None:
+    result = runner.invoke(cli_app, ["update", "999", "-t", "x"])
     assert result.exit_code == 1
     assert "not found" in result.output
 
 
-def test_cli_delete(cli_engine, runner: CliRunner) -> None:
-    runner.invoke(cli_module.app, ["create", "doomed"])
+def test_cli_delete(db_engine, runner: CliRunner) -> None:
+    runner.invoke(cli_app, ["create", "doomed"])
 
-    result = runner.invoke(cli_module.app, ["delete", "1", "--yes"])
+    result = runner.invoke(cli_app, ["delete", "1", "--yes"])
     assert result.exit_code == 0, result.output
     assert "Deleted task 1" in result.output
 
-    with Session(cli_engine) as session:
+    with Session(db_engine) as session:
         assert session.get(Task, 1) is None
 
 
-def test_cli_delete_not_found(cli_engine, runner: CliRunner) -> None:
-    result = runner.invoke(cli_module.app, ["delete", "999", "--yes"])
+def test_cli_delete_not_found(db_engine, runner: CliRunner) -> None:
+    result = runner.invoke(cli_app, ["delete", "999", "--yes"])
     assert result.exit_code == 1
     assert "not found" in result.output
 
 
 def test_cli_tui_invokes_app(
-    cli_engine, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
+    db_engine, runner: CliRunner, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`systema2 tui` should instantiate Systema2App and call .run()."""
     calls: list[str] = []
@@ -131,11 +100,11 @@ def test_cli_tui_invokes_app(
         def run(self) -> None:
             calls.append("run")
 
-    # Patch the class inside the tui module so the CLI's lazy import picks it up.
+    # Patch where the CLI's lazy import looks up the class.
     from systema2 import tui as tui_module
 
     monkeypatch.setattr(tui_module, "Systema2App", FakeApp)
 
-    result = runner.invoke(cli_module.app, ["tui"])
+    result = runner.invoke(cli_app, ["tui"])
     assert result.exit_code == 0, result.output
     assert calls == ["run"]

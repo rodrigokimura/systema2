@@ -1,0 +1,52 @@
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlmodel import Session
+
+from systema2 import services
+from systema2.database import get_session
+from systema2.models import Task, TaskCreate, TaskRead, TaskUpdate
+
+router = APIRouter(prefix="/tasks", tags=["tasks"])
+
+
+def _get_or_404(session: Session, task_id: int) -> Task:
+    task = services.get_task(session, task_id)
+    if task is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Task not found")
+    return task
+
+
+@router.get("", response_model=list[TaskRead])
+def list_tasks(session: Session = Depends(get_session)) -> list[Task]:
+    return services.list_tasks(session)
+
+
+@router.get("/{task_id}", response_model=TaskRead)
+def get_task(task_id: int, session: Session = Depends(get_session)) -> Task:
+    return _get_or_404(session, task_id)
+
+
+@router.post("", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
+def create_task(
+    payload: TaskCreate, session: Session = Depends(get_session)
+) -> Task:
+    return services.create_task(session, payload)
+
+
+@router.patch("/{task_id}", response_model=TaskRead)
+def update_task(
+    task_id: int,
+    payload: TaskUpdate,
+    session: Session = Depends(get_session),
+) -> Task:
+    task = services.update_task(session, task_id, payload)
+    if task is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Task not found")
+    return task
+
+
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(
+    task_id: int, session: Session = Depends(get_session)
+) -> None:
+    if not services.delete_task(session, task_id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Task not found")
