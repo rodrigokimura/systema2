@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 
 from systema2 import database
 from systema2.models import (
+    Priority,
     Project,
     ProjectCreate,
     ProjectUpdate,
@@ -54,12 +55,15 @@ def list_tasks(
     *,
     project_id: int | None = None,
     unassigned: bool = False,
+    priority: Priority | None = None,
 ) -> list[Task]:
     stmt = select(Task).order_by(Task.id)
     if unassigned:
         stmt = stmt.where(Task.project_id.is_(None))  # type: ignore[union-attr]
     elif project_id is not None:
         stmt = stmt.where(Task.project_id == project_id)
+    if priority is not None:
+        stmt = stmt.where(Task.priority == priority)
     return list(session.exec(stmt).all())
 
 
@@ -176,10 +180,18 @@ def delete_project(session: Session, project_id: int) -> bool:
 
 
 def list_tasks_std(
-    *, project_id: int | None = None, unassigned: bool = False
+    *,
+    project_id: int | None = None,
+    unassigned: bool = False,
+    priority: Priority | None = None,
 ) -> list[Task]:
     with _session() as s:
-        return list_tasks(s, project_id=project_id, unassigned=unassigned)
+        return list_tasks(
+            s,
+            project_id=project_id,
+            unassigned=unassigned,
+            priority=priority,
+        )
 
 
 def get_task_std(task_id: int) -> Task | None:

@@ -109,28 +109,6 @@ def test_local_repository_crud(db_engine) -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def http_repo_against_app(
-    db_engine, monkeypatch: pytest.MonkeyPatch
-) -> HttpTaskRepository:
-    """An HttpTaskRepository whose httpx.Client talks to the live FastAPI app.
-
-    The API uses the same ``db_engine`` (patched in conftest), so CRUD through
-    HTTP is observably equivalent to local CRUD. We use ``fastapi.testclient
-    .TestClient`` (itself an ``httpx.Client`` subclass) so the sync
-    repository code can drive the ASGI app without an event loop.
-    """
-    from fastapi.testclient import TestClient
-
-    from systema2.api import app as fastapi_app
-
-    def _client_factory(self: HttpTaskRepository):
-        return TestClient(fastapi_app, base_url=self._base_url)
-
-    monkeypatch.setattr(HttpTaskRepository, "_client", _client_factory)
-    return HttpTaskRepository(base_url="http://testserver")
-
-
 def test_http_repository_crud(http_repo_against_app: HttpTaskRepository) -> None:
     repo = http_repo_against_app
 

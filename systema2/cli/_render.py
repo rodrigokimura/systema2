@@ -5,9 +5,19 @@ from __future__ import annotations
 from rich.console import Console
 from rich.table import Table
 
-from systema2.models import Project, Task
+from systema2.models import Priority, Project, Task
 
 console = Console()
+
+_PRIORITY_STYLE: dict[Priority, str] = {
+    Priority.HIGH: "bold red",
+    Priority.MEDIUM: "yellow",
+    Priority.LOW: "dim",
+}
+
+
+def _priority_cell(p: Priority) -> str:
+    return f"[{_PRIORITY_STYLE[p]}]{p.value}[/{_PRIORITY_STYLE[p]}]"
 
 
 def render_task(task: Task) -> None:
@@ -18,6 +28,7 @@ def render_task(task: Task) -> None:
     table.add_row("title", task.title)
     table.add_row("description", task.description or "")
     table.add_row("completed", "✓" if task.completed else "✗")
+    table.add_row("priority", _priority_cell(task.priority))
     table.add_row(
         "project_id", str(task.project_id) if task.project_id is not None else ""
     )
@@ -35,6 +46,7 @@ def render_task_list(tasks: list[Task]) -> None:
     table.add_column("ID", justify="right")
     table.add_column("Title")
     table.add_column("Description")
+    table.add_column("Pri", justify="center")
     table.add_column("Project", justify="right")
     table.add_column("Done", justify="center")
     for t in tasks:
@@ -42,6 +54,7 @@ def render_task_list(tasks: list[Task]) -> None:
             str(t.id),
             t.title,
             t.description or "",
+            _priority_cell(t.priority),
             str(t.project_id) if t.project_id is not None else "",
             "✓" if t.completed else "✗",
         )

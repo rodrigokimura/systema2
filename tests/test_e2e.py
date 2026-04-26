@@ -378,6 +378,7 @@ def test_e2e_json_via_api_matches_schema(
         "title",
         "description",
         "completed",
+        "priority",
         "project_id",
         "created_at",
         "updated_at",
@@ -517,6 +518,78 @@ def test_e2e_client_project_round_trip(tmp_path: Path) -> None:
         tasks = httpx.get(f"{base_url}/tasks", timeout=3.0).json()
         assert len(tasks) == 1
         assert tasks[0]["project_id"] is None
+
+        # Client never wrote a local DB.
+        assert not (client_cwd / "systema2.db").exists()
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+# ---------------------------------------------------------------------------
+# Priority — end-to-end
+# ---------------------------------------------------------------------------
+
+
+def test_e2e_local_priority_round_trip(workspace: Path) -> None:
+    env = {"SYSTEMA2_MODE": "local"}
+
+    _run(["create", "urgent", "-P", "H"], cwd=workspace, env=env)
+    _run(["create", "normal"], cwd=workspace, env=env)
+    _run(["create", "whenever", "-P", "L"], cwd=workspace, env=env)
+
+    r = _run(["list", "-P", "H"], cwd=workspace, env=env)
+    assert "urgent" in r.stdout
+    assert "normal" not in r.stdout
+    assert "whenever" not in r.stdout
+
+    # Update priority on a fresh subprocess.
+    _run(["update", "2", "-P", "H"], cwd=workspace, env=env)
+    r = _run(["list", "-P", "H"], cwd=workspace, env=env)
+    assert "urgent" in r.stdout
+    assert "normal" in r.stdout
+
+    # Invalid priority -> non-zero exit from Typer's enum validation.
+    r = _run(
+        ["create", "bad", "-P", "X"],
+        cwd=workspace,
+        env=env,
+        check=False,
+    )
+    assert r.returncode != 0
+
+
+def test_e2e_client_priority_round_trip(tmp_path: Path) -> None:
+    server_cwd = tmp_path / "server"
+    client_cwd = tmp_path / "client"
+    server_cwd.mkdir()
+    client_cwd.mkdir()
+
+    port = _free_port()
+    base_url = f"http://127.0.0.1:{port}"
+    proc = _spawn_server(server_cwd, port)
+    try:
+        _wait_for_server(base_url)
+        env = {"SYSTEMA2_MODE": "client", "SYSTEMA2_API_URL": base_url}
+
+        _run(["create", "urgent", "-P", "H"], cwd=client_cwd, env=env)
+        _run(["create", "plain"], cwd=client_cwd, env=env)
+
+        # Verify via the API directly.
+        tasks = httpx.get(
+            f"{base_url}/tasks", timeout=3.0
+        ).json()
+        prios = {t["title"]: t["priority"] for t in tasks}
+        assert prios == {"urgent": "H", "plain": "M"}
+
+        # Filter via the client.
+        r = _run(["list", "-P", "H"], cwd=client_cwd, env=env)
+        assert "urgent" in r.stdout
+        assert "plain" not in r.stdout
 
         # Client never wrote a local DB.
         assert not (client_cwd / "systema2.db").exists()
