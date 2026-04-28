@@ -101,7 +101,61 @@ uv run systema2 tui
 | `client`        | HTTP calls to `SYSTEMA2_API_URL`     | no       |
 
 Other env vars: `SYSTEMA2_API_URL` (default `http://127.0.0.1:8000`),
-`SYSTEMA2_HOST`, `SYSTEMA2_PORT`.
+`SYSTEMA2_HOST`, `SYSTEMA2_PORT`, `SYSTEMA2_API_KEY`.
+
+### Authentication (client ↔ server)
+
+When `SYSTEMA2_API_KEY` is set **on the server**, every request to
+`/tasks` and `/projects` must present the shared secret. The `/`
+health endpoint stays open so probes and reverse proxies still work.
+
+Generate a strong shared secret (uses `secrets.token_urlsafe`, 256
+bits of entropy by default):
+
+```bash
+uv run systema2 gen-api-key                # prints the key on stdout
+uv run systema2 gen-api-key --export       # prints `export SYSTEMA2_API_KEY=...`
+uv run systema2 gen-api-key --bytes 64     # more entropy
+
+# Typical wiring:
+export SYSTEMA2_API_KEY="$(uv run systema2 gen-api-key)"
+```
+
+Server:
+
+```bash
+export SYSTEMA2_MODE=server
+export SYSTEMA2_API_KEY='s3cret'
+uv run systema2 serve
+```
+
+Client (CLI / TUI): set the same value and the `HttpTaskRepository`
+will forward it as `X-API-Key` on every call.
+
+```bash
+export SYSTEMA2_MODE=client
+export SYSTEMA2_API_URL=http://127.0.0.1:8000
+export SYSTEMA2_API_KEY='s3cret'
+uv run systema2 list
+```
+
+Raw `curl` can use either header style:
+
+```bash
+curl -H 'X-API-Key: s3cret'       http://127.0.0.1:8000/tasks
+curl -H 'Authorization: Bearer s3cret' http://127.0.0.1:8000/tasks
+```
+
+Responses:
+
+- `401 Missing API key` — header absent (server also returns
+  `WWW-Authenticate: X-API-Key`).
+- `403 Invalid API key` — header present but value does not match.
+
+If `SYSTEMA2_API_KEY` is **unset (or blank) on the server**, the
+endpoints are unauthenticated — convenient for local dev. The client
+similarly sends no header when the variable is unset, so the default
+experience is unchanged.
 
 ## Project layout
 
