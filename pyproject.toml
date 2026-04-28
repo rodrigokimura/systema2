@@ -7,6 +7,7 @@ requires-python = ">=3.14"
 dependencies = [
     "fastapi>=0.136.1",
     "httpx>=0.28.1",
+    "pydantic-settings",
     "sqlmodel>=0.0.38",
     "textual>=8.2.4",
     "typer>=0.24.2",
