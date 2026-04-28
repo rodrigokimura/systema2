@@ -16,7 +16,8 @@ from typing import Protocol
 import httpx
 
 from systema2 import services
-from systema2.config import Mode, get_api_url, get_mode
+from systema2.api.auth import API_KEY_HEADER
+from systema2.config import Mode, get_api_key, get_api_url, get_mode
 from systema2.models import (
     Priority,
     Project,
@@ -30,6 +31,10 @@ from systema2.models import (
 
 class RepositoryError(RuntimeError):
     """Raised when a repository call fails (e.g. network/HTTP error)."""
+
+
+class AuthenticationError(RepositoryError):
+    """Raised when the server rejects our API key (401/403)."""
 
 
 class ProjectNotFoundError(RepositoryError):
@@ -136,14 +141,31 @@ class LocalTaskRepository:
 class HttpTaskRepository:
     """Repository that proxies to a running ``systema2`` FastAPI server."""
 
-    def __init__(self, base_url: str | None = None, timeout: float = 10.0):
+    def __init__(
+        self,
+        base_url: str | None = None,
+        timeout: float = 10.0,
+        api_key: str | None = None,
+    ):
         self._base_url = (base_url or get_api_url()).rstrip("/")
         self._timeout = timeout
+        # ``api_key`` overrides env for tests / explicit wiring. Passing
+        # an empty string disables auth regardless of env.
+        self._api_key = api_key if api_key is not None else get_api_key()
 
     # --- helpers --------------------------------------------------------
 
+    def _headers(self) -> dict[str, str]:
+        if self._api_key:
+            return {API_KEY_HEADER: self._api_key}
+        return {}
+
     def _client(self) -> httpx.Client:
-        return httpx.Client(base_url=self._base_url, timeout=self._timeout)
+        return httpx.Client(
+            base_url=self._base_url,
+            timeout=self._timeout,
+            headers=self._headers(),
+        )
 
     @staticmethod
     def _to_task(data: dict) -> Task:
@@ -156,6 +178,19 @@ class HttpTaskRepository:
     def _network_error(self, exc: httpx.HTTPError) -> RepositoryError:
         return RepositoryError(
             f"Could not reach systema2 server at {self._base_url}: {exc}"
+        )
+
+    @staticmethod
+    def _maybe_auth_error(r: httpx.Response) -> None:
+        """Translate 401/403 into :class:`AuthenticationError`."""
+        if r.status_code not in (401, 403):
+            return
+        try:
+            detail = r.json().get("detail", r.reason_phrase)
+        except ValueError:
+            detail = r.reason_phrase
+        raise AuthenticationError(
+            f"systema2 server rejected API key ({r.status_code}): {detail}"
         )
 
     def _maybe_project_error(self, r: httpx.Response) -> None:
@@ -194,6 +229,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.get("/tasks", params=params)
+                self._maybe_auth_error(r)
                 r.raise_for_status()
                 return [self._to_task(item) for item in r.json()]
         except httpx.HTTPError as exc:
@@ -203,6 +239,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.get(f"/tasks/{task_id}")
+                self._maybe_auth_error(r)
                 if r.status_code == 404:
                     return None
                 r.raise_for_status()
@@ -214,6 +251,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.post("/tasks", json=payload.model_dump(mode="json"))
+                self._maybe_auth_error(r)
                 self._maybe_project_error(r)
                 r.raise_for_status()
                 return self._to_task(r.json())
@@ -225,6 +263,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.patch(f"/tasks/{task_id}", json=body)
+                self._maybe_auth_error(r)
                 if r.status_code == 404:
                     return None
                 self._maybe_project_error(r)
@@ -237,6 +276,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.delete(f"/tasks/{task_id}")
+                self._maybe_auth_error(r)
                 if r.status_code == 404:
                     return False
                 r.raise_for_status()
@@ -250,6 +290,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.get("/projects")
+                self._maybe_auth_error(r)
                 r.raise_for_status()
                 return [self._to_project(item) for item in r.json()]
         except httpx.HTTPError as exc:
@@ -259,6 +300,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.get(f"/projects/{project_id}")
+                self._maybe_auth_error(r)
                 if r.status_code == 404:
                     return None
                 r.raise_for_status()
@@ -270,6 +312,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.post("/projects", json=payload.model_dump(mode="json"))
+                self._maybe_auth_error(r)
                 r.raise_for_status()
                 return self._to_project(r.json())
         except httpx.HTTPError as exc:
@@ -282,6 +325,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.patch(f"/projects/{project_id}", json=body)
+                self._maybe_auth_error(r)
                 if r.status_code == 404:
                     return None
                 r.raise_for_status()
@@ -293,6 +337,7 @@ class HttpTaskRepository:
         try:
             with self._client() as c:
                 r = c.delete(f"/projects/{project_id}")
+                self._maybe_auth_error(r)
                 if r.status_code == 404:
                     return False
                 r.raise_for_status()
