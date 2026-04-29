@@ -3,7 +3,7 @@ name = "systema2"
 version = "0.1.0"
 description = "A small task manager with a FastAPI backend, Typer CLI, and Textual TUI. Runs in local, client, or server mode."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [
@@ -16,6 +16,7 @@ classifiers = [
     "Framework :: FastAPI",
     "Intended Audience :: Developers",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Office/Business :: Scheduling",
     "Topic :: Software Development :: Libraries :: Python Modules",
