@@ -67,6 +67,27 @@ uv run systema2 list --due-before 2030-12-31
 uv run systema2 tui
 ```
 
+#### TUI keybindings (vim-style)
+
+| Key                    | Action                                       |
+|------------------------|----------------------------------------------|
+| `a`                    | **a**dd task                                 |
+| `i`                    | ed**i**t task (vim insert)                   |
+| `x`                    | delete task (vim delete-char)                |
+| `space`                | toggle task done / not done                  |
+| `o`                    | **o**pen new project (vim open-line)         |
+| `I`                    | edit project                                 |
+| `X`                    | delete project                               |
+| `j` / `k`              | move cursor down / up                        |
+| `g` / `G`              | jump to first / last row                     |
+| `ctrl+d` / `ctrl+u`    | half-page down / up                          |
+| `ctrl+w`               | switch pane (tasks ↔ projects sidebar)       |
+| `r`                    | refresh                                      |
+| `q`                    | quit                                         |
+
+Inside modal dialogs the usual text-editing keys apply; `ctrl+s` saves
+and `escape` cancels.
+
 ### Server
 
 ```bash

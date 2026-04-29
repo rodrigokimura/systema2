@@ -8,7 +8,7 @@ from textual.containers import Horizontal
 from textual.widgets import DataTable, Footer, Header, ListItem, ListView, Label
 
 from systema2.database import init_db_if_local
-from systema2.models import Project, Task
+from systema2.models import Project, Task, TaskUpdate
 from systema2.repository import RepositoryError, get_repository
 from systema2.tui.screens.delete import DeleteProjectScreen, DeleteTaskScreen
 from systema2.tui.screens.form import AddTaskScreen, EditTaskScreen
@@ -38,19 +38,35 @@ class Systema2App(App[None]):
     }
     """
 
+    # Vim-style keybindings. Mnemonics:
+    #   a  append (add task)        i  insert (edit task)
+    #   x  delete char (task)       space  toggle done
+    #   o  open line (new project)  I  shift-I (edit project)
+    #   X  delete line (project)    j/k  down/up
+    #   g/G  top/bottom             ctrl-d/u  half-page down/up
+    #   ctrl-w  window switch       r  redraw
+    #   q  quit
     BINDINGS = [
-        # Tasks
-        Binding("a", "add_task", "Add task"),
-        Binding("e", "edit_task", "Edit task"),
-        Binding("d", "delete_task", "Delete task"),
-        # Projects
-        Binding("n", "add_project", "New project"),
-        Binding("E", "edit_project", "Edit project"),
-        Binding("x", "delete_project", "Delete project"),
-        # Navigation
-        Binding("tab", "focus_next_pane", "Switch pane"),
-        Binding("r", "refresh", "Refresh"),
-        Binding("q", "quit", "Quit"),
+        # --- tasks ---
+        Binding("a", "add_task", "[a]dd task"),
+        Binding("i", "edit_task", "ed[i]t task"),
+        Binding("x", "delete_task", "delete (x)"),
+        Binding("space", "toggle_task", "toggle done"),
+        # --- projects ---
+        Binding("o", "add_project", "[o]pen project"),
+        Binding("I", "edit_project", "edit project (I)"),
+        Binding("X", "delete_project", "del project (X)"),
+        # --- vim navigation ---
+        Binding("j", "cursor_down", "↓ (j)", show=False),
+        Binding("k", "cursor_up", "↑ (k)", show=False),
+        Binding("g", "cursor_top", "top (g)", show=False),
+        Binding("G", "cursor_bottom", "bot (G)", show=False),
+        Binding("ctrl+d", "scroll_half_down", "½↓", show=False),
+        Binding("ctrl+u", "scroll_half_up", "½↑", show=False),
+        Binding("ctrl+w", "focus_next_pane", "switch pane"),
+        # --- misc ---
+        Binding("r", "refresh", "refresh"),
+        Binding("q", "quit", "[q]uit"),
     ]
 
     TITLE = "systema2"
@@ -272,6 +288,95 @@ class Systema2App(App[None]):
             table.focus()
         else:
             sidebar.focus()
+
+    # ------------------------------------------------------------------
+    # vim-style navigation actions
+    # ------------------------------------------------------------------
+
+    def _focused_navigable(self) -> DataTable | ListView | None:
+        focused = self.focused
+        if isinstance(focused, (DataTable, ListView)):
+            return focused
+        # Fall back to the tasks table so j/k/g/G work even when nothing
+        # specific is focused.
+        return self.query_one(DataTable)
+
+    def action_cursor_down(self) -> None:
+        """Move cursor down one row (vim: j)."""
+        w = self._focused_navigable()
+        if isinstance(w, DataTable):
+            w.action_cursor_down()
+        elif isinstance(w, ListView):
+            w.action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        """Move cursor up one row (vim: k)."""
+        w = self._focused_navigable()
+        if isinstance(w, DataTable):
+            w.action_cursor_up()
+        elif isinstance(w, ListView):
+            w.action_cursor_up()
+
+    def action_cursor_top(self) -> None:
+        """Jump to first row (vim: g / gg)."""
+        w = self._focused_navigable()
+        if isinstance(w, DataTable) and w.row_count:
+            w.move_cursor(row=0)
+        elif isinstance(w, ListView) and len(w.children):
+            w.index = 0
+
+    def action_cursor_bottom(self) -> None:
+        """Jump to last row (vim: G)."""
+        w = self._focused_navigable()
+        if isinstance(w, DataTable) and w.row_count:
+            w.move_cursor(row=w.row_count - 1)
+        elif isinstance(w, ListView):
+            count = len(w.children)
+            if count:
+                w.index = count - 1
+
+    def action_scroll_half_down(self) -> None:
+        """Move cursor half a page down (vim: Ctrl-d)."""
+        w = self._focused_navigable()
+        if isinstance(w, DataTable) and w.row_count:
+            half = max(1, w.size.height // 2)
+            current = w.cursor_row or 0
+            w.move_cursor(row=min(current + half, w.row_count - 1))
+        elif isinstance(w, ListView):
+            count = len(w.children)
+            if count and w.index is not None:
+                half = max(1, w.size.height // 2)
+                w.index = min(w.index + half, count - 1)
+
+    def action_scroll_half_up(self) -> None:
+        """Move cursor half a page up (vim: Ctrl-u)."""
+        w = self._focused_navigable()
+        if isinstance(w, DataTable) and w.row_count:
+            half = max(1, w.size.height // 2)
+            current = w.cursor_row or 0
+            w.move_cursor(row=max(current - half, 0))
+        elif isinstance(w, ListView):
+            if w.index is not None:
+                half = max(1, w.size.height // 2)
+                w.index = max(w.index - half, 0)
+
+    def action_toggle_task(self) -> None:
+        """Toggle the completed flag on the selected task (space)."""
+        task = self._require_selected_task()
+        if task is None:
+            return
+        assert task.id is not None
+        new_completed = not task.completed
+        try:
+            self._repo.update_task(
+                task.id, TaskUpdate(completed=new_completed)
+            )
+        except RepositoryError as exc:
+            self.notify(str(exc), severity="error", timeout=6.0)
+            return
+        self._reload_tasks()
+        state = "done" if new_completed else "not done"
+        self.notify(f"Task {task.id} marked {state}.")
 
     def action_add_task(self) -> None:
         def _after(task: Task | None) -> None:
