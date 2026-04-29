@@ -67,6 +67,10 @@ uv run systema2 list --due-before 2030-12-31
 uv run systema2 tui
 ```
 
+The TUI ships with the **Tokyo Night** colour theme (Textual built-in).
+Press `ctrl+p` and pick another theme at runtime if you prefer a different
+palette.
+
 #### TUI keybindings (vim-style)
 
 | Key                    | Action                                       |

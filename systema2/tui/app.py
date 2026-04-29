@@ -71,6 +71,10 @@ class Systema2App(App[None]):
 
     TITLE = "systema2"
 
+    # Built-in Textual theme. See ``App.available_themes`` for the full list;
+    # overridable at runtime by pressing ``ctrl+p`` and picking another theme.
+    THEME = "tokyo-night"
+
     def __init__(self) -> None:
         super().__init__()
         self._projects: list[Project] = []
@@ -92,6 +96,9 @@ class Systema2App(App[None]):
     async def on_mount(self) -> None:
         init_db_if_local()
         self._repo = get_repository()
+        # Apply the configured theme. Textual exposes ``self.theme`` as a
+        # reactive attribute that immediately restyles every widget.
+        self.theme = self.THEME
 
         table = self.query_one(DataTable)
         table.add_columns("ID", "Title", "Description", "Pri", "Due", "Done")
