@@ -19,7 +19,7 @@ Managed with **uv**.
 
 ## Requirements
 
-- Python **>=3.14**
+- Python **>=3.13** (tested on 3.13 and 3.14)
 - [uv](https://docs.astral.sh/uv/) for dependency management
 
 ## Setup

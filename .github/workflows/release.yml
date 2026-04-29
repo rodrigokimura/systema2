@@ -35,7 +35,9 @@ jobs:
           cache-dependency-glob: uv.lock
 
       - name: Install Python
-        run: uv python install 3.14
+        # Build on the minimum supported Python so the produced wheel's
+        # runtime metadata is set to the oldest version we advertise.
+        run: uv python install 3.13
 
       - name: Verify tag matches pyproject.toml version
         id: version
