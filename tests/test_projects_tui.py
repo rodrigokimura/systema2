@@ -12,7 +12,7 @@ async def test_tui_add_project(db_engine) -> None:
     app = Systema2App()
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("n")  # AddProjectScreen
+        await pilot.press("o")  # vim: open new line / new project
         await pilot.pause()
         for ch in "work":
             await pilot.press(ch)
@@ -34,10 +34,10 @@ async def test_tui_edit_project(db_engine) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         # Move sidebar selection to the first real project (index 2).
-        await pilot.press("down")
-        await pilot.press("down")
+        await pilot.press("j")  # vim: down
+        await pilot.press("j")
         await pilot.pause()
-        await pilot.press("E")  # Edit project
+        await pilot.press("I")  # vim: edit project (shift-I)
         await pilot.pause()
         for _ in range(len("old")):
             await pilot.press("backspace")
@@ -64,10 +64,10 @@ async def test_tui_delete_project_unlinks_tasks(db_engine) -> None:
     app = Systema2App()
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("down")
-        await pilot.press("down")  # highlight the project
+        await pilot.press("j")
+        await pilot.press("j")  # highlight the project
         await pilot.pause()
-        await pilot.press("x")  # DeleteProjectScreen
+        await pilot.press("X")  # vim: delete project (shift-X)
         await pilot.pause()
         # Cancel is focused; tab to Delete and confirm.
         await pilot.press("tab")
@@ -86,7 +86,7 @@ async def test_tui_edit_project_without_selection_notifies(db_engine) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         # Default selection is "All tasks" (index 0) — not a real project.
-        await pilot.press("E")
+        await pilot.press("I")  # vim: edit project
         await pilot.pause()
         # No modal should have been pushed.
         assert len(app.screen_stack) == 1
@@ -113,12 +113,12 @@ async def test_tui_sidebar_filters_tasks(db_engine) -> None:
         assert table.row_count == 2
 
         # Move to "No project" (index 1).
-        await pilot.press("down")
+        await pilot.press("j")  # vim: down
         await pilot.pause()
         assert table.row_count == 1
 
         # Move to the project row (index 2).
-        await pilot.press("down")
+        await pilot.press("j")
         await pilot.pause()
         assert table.row_count == 1
         # And it should be the inside task.
@@ -139,8 +139,8 @@ async def test_tui_add_task_inherits_selected_project(db_engine) -> None:
     async with app.run_test() as pilot:
         await pilot.pause()
         # Highlight the project in the sidebar.
-        await pilot.press("down")
-        await pilot.press("down")
+        await pilot.press("j")
+        await pilot.press("j")
         await pilot.pause()
         # Add a task — the form should pre-select the current project.
         await pilot.press("a")

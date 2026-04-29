@@ -48,7 +48,7 @@ async def test_tui_edit_task(db_engine) -> None:
     app = Systema2App()
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("e")
+        await pilot.press("i")  # vim: insert / edit
         await pilot.pause()
         # #title input is focused and populated with "original".
         for _ in range(len("original")):
@@ -67,7 +67,7 @@ async def test_tui_edit_task(db_engine) -> None:
 async def test_tui_edit_without_selection_notifies(db_engine) -> None:
     app = Systema2App()
     async with app.run_test() as pilot:
-        await pilot.press("e")  # no rows -> warning, no screen pushed
+        await pilot.press("i")  # vim: insert / edit (no rows -> no screen)
         await pilot.pause()
         assert len(app.screen_stack) == 1
 
@@ -80,7 +80,7 @@ async def test_tui_delete_task(db_engine) -> None:
     app = Systema2App()
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("d")
+        await pilot.press("x")  # vim: delete char / task
         await pilot.pause()
         # DeleteTaskScreen focuses #cancel; tab to Delete and press enter.
         await pilot.press("tab")
@@ -100,7 +100,7 @@ async def test_tui_delete_cancelled(db_engine) -> None:
     app = Systema2App()
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("d")
+        await pilot.press("x")  # vim: delete
         await pilot.pause()
         await pilot.press("escape")
         await pilot.pause()

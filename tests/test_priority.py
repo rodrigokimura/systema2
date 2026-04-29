@@ -220,7 +220,7 @@ async def test_tui_edit_task_priority_via_select(db_engine) -> None:
     app = Systema2App()
     async with app.run_test() as pilot:
         await pilot.pause()
-        await pilot.press("e")
+        await pilot.press("i")  # vim: insert / edit
         await pilot.pause()
 
         from textual.widgets import Select
