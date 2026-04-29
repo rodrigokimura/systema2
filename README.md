@@ -333,6 +333,39 @@ The SQLite file is created automatically on next startup:
 rm -f systema2.db
 ```
 
+## Releases
+
+Cutting a release is tag-driven. The `release` GitHub Actions workflow
+runs the full test suite, builds sdist + wheel with `uv build`, and
+publishes to PyPI using [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)
+(OIDC — no API tokens). It also attaches the built artifacts to a
+GitHub Release.
+
+To cut a new release:
+
+```bash
+# 1. Bump the version in pyproject.toml (must match the tag below).
+# 2. Commit and push to master.
+# 3. Tag and push:
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+The workflow refuses to publish if the tag doesn't match
+`project.version` in `pyproject.toml`.
+
+One-time PyPI setup (per project, done via the PyPI UI):
+
+1. Register the project name on PyPI.
+2. In the project's "Publishing" settings, add a **Trusted Publisher**
+   with:
+   - Owner: `rodrigokimura`
+   - Repository: `systema2`
+   - Workflow filename: `release.yml`
+   - Environment name: `pypi`
+3. Create a matching GitHub environment named `pypi` (Settings →
+   Environments) with any required protection rules.
+
 ## License
 
-Unlicensed / private project. Add a license here if you plan to publish.
+MIT — see [LICENSE](./LICENSE).
