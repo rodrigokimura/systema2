@@ -67,6 +67,11 @@ uv run systema2 list --due-before 2030-12-31
 uv run systema2 tui
 ```
 
+On startup the TUI shows a **module picker** listing the available
+modules (Tasks and Whiteboards). Pick one with `t` / `w` / `enter`,
+or press `q` to quit. Once inside a module, press `m` to reopen the
+picker.
+
 The TUI ships with the **Tokyo Night** colour theme (Textual built-in).
 Press `ctrl+p` and pick another theme at runtime if you prefer a different
 palette.
@@ -87,6 +92,7 @@ palette.
 | `ctrl+d` / `ctrl+u`    | half-page down / up                          |
 | `ctrl+w`               | switch pane (tasks ↔ projects sidebar)       |
 | `w`                    | open the whiteboard picker                   |
+| `m`                    | reopen the module picker                     |
 | `r`                    | refresh                                      |
 | `q`                    | quit                                         |
 

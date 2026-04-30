@@ -12,6 +12,11 @@ from systema2.models import Project, Task, TaskUpdate
 from systema2.repository import RepositoryError, get_repository
 from systema2.tui.screens.delete import DeleteProjectScreen, DeleteTaskScreen
 from systema2.tui.screens.form import AddTaskScreen, EditTaskScreen
+from systema2.tui.screens.module_picker import (
+    MODULE_TASKS,
+    MODULE_WHITEBOARDS,
+    ModulePickerScreen,
+)
 from systema2.tui.screens.project_form import AddProjectScreen, EditProjectScreen
 from systema2.tui.screens.whiteboard_list import WhiteboardListScreen
 
@@ -65,8 +70,9 @@ class Systema2App(App[None]):
         Binding("ctrl+d", "scroll_half_down", "½↓", show=False),
         Binding("ctrl+u", "scroll_half_up", "½↑", show=False),
         Binding("ctrl+w", "focus_next_pane", "switch pane"),
-        # --- whiteboards ---
+        # --- module navigation ---
         Binding("w", "whiteboards", "[w]hiteboards"),
+        Binding("m", "module_picker", "[m]odules"),
         # --- misc ---
         Binding("r", "refresh", "refresh"),
         Binding("q", "quit", "[q]uit"),
@@ -108,6 +114,14 @@ class Systema2App(App[None]):
 
         await self._reload_projects()
         self._reload_tasks()
+
+        # Show the module picker on startup so the user explicitly
+        # chooses which module to work in. Tests or callers that want
+        # to skip it can set ``SYSTEMA2_SKIP_MODULE_PICKER=1``.
+        import os
+
+        if not os.environ.get("SYSTEMA2_SKIP_MODULE_PICKER"):
+            self.push_screen(ModulePickerScreen())
 
     # ------------------------------------------------------------------
     # sidebar
@@ -302,6 +316,23 @@ class Systema2App(App[None]):
     def action_whiteboards(self) -> None:
         """Open the whiteboard picker screen."""
         self.push_screen(WhiteboardListScreen())
+
+    def action_module_picker(self) -> None:
+        """Re-open the module picker."""
+        self.push_screen(ModulePickerScreen())
+
+    def enter_module(self, key: str) -> None:
+        """Module-entry hook invoked by ``ModulePickerScreen``.
+
+        ``tasks`` simply reveals the default app screen (the picker
+        pops itself). ``whiteboards`` pushes the whiteboard picker on
+        top of the tasks view.
+        """
+        if key == MODULE_WHITEBOARDS:
+            self.call_later(self.push_screen, WhiteboardListScreen())
+        elif key == MODULE_TASKS:
+            # Nothing to push — the default screen is the tasks view.
+            pass
 
     # ------------------------------------------------------------------
     # vim-style navigation actions
