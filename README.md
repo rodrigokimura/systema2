@@ -107,8 +107,10 @@ create a new one.
 
 The board is a fixed-size character grid. Boxes are drawn with Unicode
 box-drawing glyphs; connectors between two boxes are routed as
-orthogonal L-shaped poly-lines with an arrowhead at the target end.
-Boxes are drawn on top of connectors so outlines stay clean.
+orthogonal **S-shaped** poly-lines (two 90° bends at a shared midpoint)
+with an arrowhead at the target end. Boxes on the same centre row or
+column degenerate to a straight line. Boxes are drawn on top of
+connectors so outlines stay clean.
 
 | Key                         | Action                                           |
 |-----------------------------|--------------------------------------------------|

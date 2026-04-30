@@ -109,6 +109,108 @@ def test_selected_box_has_distinct_style() -> None:
     assert not any("yellow" in s for s in styles2)
 
 
+def test_horizontal_s_shape_has_two_corner_bends() -> None:
+    # A is upper-left; B is lower-right. The connector should be a
+    # horizontal S: leave A horizontally, drop down at the midpoint,
+    # and arrive at B horizontally. Two bends are expected: ┐ on
+    # A's centre row and └ on B's centre row, both on the same midpoint
+    # column with a vertical run of │ between them.
+    a = _box(1, 2, 2, width=10, height=3, label="a")
+    b = _box(2, 40, 20, width=10, height=3, label="b")
+    conn = Connector(
+        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+    )
+    out = _plain(render_canvas([a, b], [conn]))
+    # A's centre row is y=3, B's centre row is y=21. Ignore the row
+    # containing A's top-right ┐ corner (y=2).
+    sy, ty = 3, 21
+    row_src = out[sy]
+    row_dst = out[ty]
+    # The horizontal legs leave A to the right and enter B from the
+    # left, so the ┐ bend is the *last* ┐ on sy (after A's ┐ corner)
+    # and the └ bend is on ty (B has no └ on its centre row).
+    assert "\u2510" in row_src, "expected a ┐ bend on A's centre row"
+    assert "\u2514" in row_dst, "expected a └ bend on B's centre row"
+    col_topbend = row_src.rindex("\u2510")
+    col_botbend = row_dst.index("\u2514")
+    assert col_topbend == col_botbend, (
+        f"┐ at col {col_topbend} but └ at col {col_botbend}"
+    )
+    # Vertical run of │ on the midpoint column strictly between the
+    # two rows.
+    pipes = sum(1 for y in range(sy + 1, ty) if out[y][col_topbend] == "\u2502")
+    assert pipes >= 3, f"expected ≥ 3 vertical pipes, got {pipes}"
+    # Arrowhead on B's centre row.
+    assert "\u25b6" in row_dst
+
+
+def test_vertical_s_shape_has_two_corner_bends() -> None:
+    # Vertically-dominant separation: the vertical gap is larger than
+    # the horizontal one, so the router picks a vertical S. Expect:
+    # exit A downward, turn right at the midpoint row, descend into B.
+    a = _box(1, 20, 1, width=8, height=3, label="a")
+    b = _box(2, 40, 30, width=8, height=3, label="b")
+    conn = Connector(
+        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+    )
+    out = _plain(render_canvas([a, b], [conn]))
+    # The two bends for a down-right vertical S are └ on A's column
+    # and ┐ on B's column, both sitting on the midpoint row.
+    src_col = 23  # A centre column: (20 + 27) // 2
+    dst_col = 43  # B centre column: (40 + 47) // 2
+    # Find the midpoint row by scanning A's column for a bend.
+    my = None
+    for y, row in enumerate(out):
+        if row[src_col] == "\u2514":
+            my = y
+            break
+    assert my is not None, "expected └ bend on A's centre column"
+    assert out[my][dst_col] == "\u2510", (
+        f"expected ┐ bend on B's centre column at row {my}, "
+        f"got {out[my][dst_col]!r}"
+    )
+    # Horizontal run between the two bends.
+    dashes = sum(
+        1 for x in range(src_col + 1, dst_col) if out[my][x] == "\u2500"
+    )
+    assert dashes >= 3, f"expected ≥ 3 horizontal dashes, got {dashes}"
+    # Arrowhead just above B (target_top - 1, dst_col).
+    assert out[29][dst_col] == "\u25bc", (
+        f"expected ▼ above B, got {out[29][dst_col]!r}"
+    )
+
+
+def test_s_shape_midpoint_column_is_between_the_two_boxes() -> None:
+    # For a right-going horizontal S, the dogleg midpoint column must
+    # sit in the clear space between the two boxes, not inside either.
+    a = _box(1, 0, 0, width=10, height=3, label="a")  # cols 0..9
+    b = _box(2, 50, 20, width=10, height=3, label="b")  # cols 50..59
+    conn = Connector(
+        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+    )
+    out = _plain(render_canvas([a, b], [conn]))
+    # A's centre row is y=1; look for the connector's ┐ bend on that
+    # row (the first ┐ is A's top-right corner on y=0, which we skip).
+    row = out[1]
+    assert "\u2510" in row, "expected a ┐ bend on A's centre row"
+    col = row.rindex("\u2510")
+    assert 10 <= col <= 49, f"midpoint ┐ at col {col}; expected in 10..49"
+
+
+def test_s_shape_reverses_direction_for_left_going_connector() -> None:
+    # Flip source and target: connector goes right-to-left, so the
+    # arrowhead must be ◀ at the right edge of the target box.
+    a = _box(1, 50, 2, width=10, height=3, label="a")
+    b = _box(2, 2, 20, width=10, height=3, label="b")
+    conn = Connector(
+        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+    )
+    out = _plain(render_canvas([a, b], [conn]))
+    assert any("\u25c0" in row for row in out)
+    # And no right-facing arrow should appear for this connector.
+    assert not any("\u25b6" in row for row in out)
+
+
 def test_boxes_are_drawn_on_top_of_connectors() -> None:
     # Place a connector endpoint so its horizontal leg would pass through
     # the interior of box ``b`` if the z-order were wrong.

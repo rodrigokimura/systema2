@@ -2,9 +2,12 @@
 
 The canvas is a fixed-size character grid rendered into a single
 ``Static`` widget. Boxes are drawn with Unicode box-drawing characters
-(\u250c \u2500 \u2510 \u2502 \u2514 \u2518) and connectors are drawn as orthogonal L-shaped
+(\u250c \u2500 \u2510 \u2502 \u2514 \u2518) and connectors are drawn as orthogonal S-shaped
 poly-lines between the centres of their source and target boxes, with
-an arrowhead at the target end.
+an arrowhead at the target end. S-shapes have two 90° bends (at a
+shared midpoint) so the dogleg stays clear of the boxes instead of
+hugging them like an L. Boxes on the same row or column degenerate to
+a straight line.
 
 The widget is intentionally self-contained \u2014 it takes the current set
 of boxes and connectors and produces a Rich ``Text`` each render pass.
@@ -167,70 +170,168 @@ def _draw_box(
             _set(grid, styles, start + i, row, ch, style)
 
 
+def _draw_hline(
+    grid: list[list[str]],
+    styles: list[list[str | None]],
+    x0: int,
+    x1: int,
+    y: int,
+    style: str,
+) -> None:
+    """Draw a horizontal run (inclusive on both ends), skipping non-blank cells."""
+    lo, hi = sorted((x0, x1))
+    for x in range(lo, hi + 1):
+        if 0 <= y < len(grid) and 0 <= x < len(grid[0]) and grid[y][x] == " ":
+            _set(grid, styles, x, y, "\u2500", style)
+
+
+def _draw_vline(
+    grid: list[list[str]],
+    styles: list[list[str | None]],
+    x: int,
+    y0: int,
+    y1: int,
+    style: str,
+) -> None:
+    """Draw a vertical run (inclusive on both ends), skipping non-blank cells."""
+    lo, hi = sorted((y0, y1))
+    for y in range(lo, hi + 1):
+        if 0 <= y < len(grid) and 0 <= x < len(grid[0]) and grid[y][x] == " ":
+            _set(grid, styles, x, y, "\u2502", style)
+
+
 def _draw_connector(
     grid: list[list[str]],
     styles: list[list[str | None]],
     src: _RenderedBox,
     dst: _RenderedBox,
 ) -> None:
-    """Route an L-shaped orthogonal line from ``src`` to ``dst``.
+    """Route an S-shaped orthogonal line from ``src`` to ``dst``.
 
-    Strategy: leave the source from its right or left edge (whichever
-    side faces the target), travel horizontally to the target's centre
-    column, then vertically to the target's centre row, and finish with
-    an arrowhead pointing at the target edge.
+    An S-shape has two 90° turns so the dogleg bends gracefully around
+    the midpoint instead of hugging the target like an L. Three flavours:
+
+    * **horizontal S** (boxes to the left/right of each other): exit
+      the source horizontally, turn at the midpoint x, run vertically
+      to the target row, turn again, and arrive horizontally.
+    * **vertical S** (boxes above/below each other): exit the source
+      vertically, turn at the midpoint y, run horizontally to the
+      target column, turn again, and arrive vertically.
+    * **straight** (boxes exactly aligned on a row or column): a plain
+      line with no turns — the degenerate case.
     """
     style = "cyan"
 
-    # Pick exit point on source and entry point on target.
-    if dst.center_x > src.center_x:
-        # src -> right, dst <- left
-        sx, sy = src.right + 1, src.center_y
-        tx, ty = dst.left - 1, dst.center_y
-        arrow = "\u25b6"  # \u25b6
-    elif dst.center_x < src.center_x:
-        sx, sy = src.left - 1, src.center_y
-        tx, ty = dst.right + 1, dst.center_y
-        arrow = "\u25c0"  # \u25c0
-    else:
-        # Same column: exit top or bottom.
+    # ---- Straight (degenerate) cases ---------------------------------
+    # Same centre row → pure horizontal line. Same centre column → pure
+    # vertical line. We keep these as-is because they render cleanly and
+    # the existing tests assert on the straight-line shape.
+    if src.center_y == dst.center_y and src.center_x != dst.center_x:
+        if dst.center_x > src.center_x:
+            sx, tx = src.right + 1, dst.left - 1
+            arrow = "\u25b6"
+        else:
+            sx, tx = src.left - 1, dst.right + 1
+            arrow = "\u25c0"
+        y = src.center_y
+        _draw_hline(grid, styles, sx, tx, y, style)
+        _set(grid, styles, tx, y, arrow, style)
+        return
+
+    if src.center_x == dst.center_x and src.center_y != dst.center_y:
         if dst.center_y > src.center_y:
-            sx, sy = src.center_x, src.bottom + 1
-            tx, ty = dst.center_x, dst.top - 1
-            arrow = "\u25bc"  # \u25bc
+            sy, ty = src.bottom + 1, dst.top - 1
+            arrow = "\u25bc"
         else:
-            sx, sy = src.center_x, src.top - 1
-            tx, ty = dst.center_x, dst.bottom + 1
-            arrow = "\u25b2"  # \u25b2
+            sy, ty = src.top - 1, dst.bottom + 1
+            arrow = "\u25b2"
+        x = src.center_x
+        _draw_vline(grid, styles, x, sy, ty, style)
+        _set(grid, styles, x, ty, arrow, style)
+        return
 
-    # Horizontal leg from (sx, sy) to (tx, sy).
-    x0, x1 = sorted((sx, tx))
-    for x in range(x0, x1 + 1):
-        # Skip cells already containing a box edge so we don't smear.
-        if grid[sy][x] == " ":
-            _set(grid, styles, x, sy, "\u2500", style)
+    # ---- General S-shapes --------------------------------------------
+    # Pick the dominant axis by which separation is larger. When the
+    # horizontal gap dominates we use a horizontal S (enter/exit from
+    # the sides); when the vertical gap dominates we use a vertical S
+    # (enter/exit top/bottom).
+    horizontal_gap = abs(dst.center_x - src.center_x)
+    vertical_gap = abs(dst.center_y - src.center_y)
 
-    # Vertical leg from (tx, sy) to (tx, ty).
-    y0, y1 = sorted((sy, ty))
-    for y in range(y0, y1 + 1):
-        if grid[y][tx] == " ":
-            _set(grid, styles, tx, y, "\u2502", style)
-
-    # Corner where the two legs meet.
-    if sy != ty and sx != tx:
-        _set(grid, styles, tx, sy, "\u2510" if tx < sx else "\u250c", style)
-        # Correct corner glyph based on direction of travel:
-        if tx > sx and ty > sy:
-            corner = "\u2510"
-        elif tx < sx and ty > sy:
-            corner = "\u250c"
-        elif tx > sx and ty < sy:
-            corner = "\u2518"
+    if horizontal_gap >= vertical_gap:
+        # Horizontal S.
+        going_right = dst.center_x > src.center_x
+        going_down = dst.center_y > src.center_y
+        if going_right:
+            sx = src.right + 1
+            tx = dst.left - 1
+            arrow = "\u25b6"
         else:
-            corner = "\u2514"
-        _set(grid, styles, tx, sy, corner, style)
+            sx = src.left - 1
+            tx = dst.right + 1
+            arrow = "\u25c0"
+        sy, ty = src.center_y, dst.center_y
+        mx = (sx + tx) // 2  # midpoint column where the dogleg happens
 
-    # Arrowhead at the target side.
+        # First horizontal leg: source edge -> midpoint.
+        _draw_hline(grid, styles, sx, mx, sy, style)
+        # Vertical leg at mx between the two rows.
+        _draw_vline(grid, styles, mx, sy, ty, style)
+        # Second horizontal leg: midpoint -> target edge.
+        _draw_hline(grid, styles, mx, tx, ty, style)
+
+        # Corner glyphs at the two bends. The horizontal pieces already
+        # wrote "\u2500" at (mx, sy) and (mx, ty); overwrite with bends.
+        if going_right and going_down:
+            _set(grid, styles, mx, sy, "\u2510", style)  # ┐
+            _set(grid, styles, mx, ty, "\u2514", style)  # └
+        elif going_right and not going_down:
+            _set(grid, styles, mx, sy, "\u2518", style)  # ┘
+            _set(grid, styles, mx, ty, "\u250c", style)  # ┌
+        elif not going_right and going_down:
+            _set(grid, styles, mx, sy, "\u250c", style)  # ┌
+            _set(grid, styles, mx, ty, "\u2518", style)  # ┘
+        else:  # left and up
+            _set(grid, styles, mx, sy, "\u2514", style)  # └
+            _set(grid, styles, mx, ty, "\u2510", style)  # ┐
+
+        _set(grid, styles, tx, ty, arrow, style)
+        return
+
+    # Vertical S.
+    going_down = dst.center_y > src.center_y
+    going_right = dst.center_x > src.center_x
+    if going_down:
+        sy = src.bottom + 1
+        ty = dst.top - 1
+        arrow = "\u25bc"
+    else:
+        sy = src.top - 1
+        ty = dst.bottom + 1
+        arrow = "\u25b2"
+    sx, tx = src.center_x, dst.center_x
+    my = (sy + ty) // 2  # midpoint row where the dogleg happens
+
+    # First vertical leg: source edge -> midpoint row.
+    _draw_vline(grid, styles, sx, sy, my, style)
+    # Horizontal leg at my between the two columns.
+    _draw_hline(grid, styles, sx, tx, my, style)
+    # Second vertical leg: midpoint row -> target edge.
+    _draw_vline(grid, styles, tx, my, ty, style)
+
+    if going_down and going_right:
+        _set(grid, styles, sx, my, "\u2514", style)  # └
+        _set(grid, styles, tx, my, "\u2510", style)  # ┐
+    elif going_down and not going_right:
+        _set(grid, styles, sx, my, "\u2518", style)  # ┘
+        _set(grid, styles, tx, my, "\u250c", style)  # ┌
+    elif not going_down and going_right:
+        _set(grid, styles, sx, my, "\u250c", style)  # ┌
+        _set(grid, styles, tx, my, "\u2518", style)  # ┘
+    else:  # up and left
+        _set(grid, styles, sx, my, "\u2510", style)  # ┐
+        _set(grid, styles, tx, my, "\u2514", style)  # └
+
     _set(grid, styles, tx, ty, arrow, style)
 
 
