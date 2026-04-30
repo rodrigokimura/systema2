@@ -107,3 +107,101 @@ class TaskRead(TaskBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# Whiteboard / Box / Connector
+#
+# A Whiteboard is a free-form canvas. Boxes are placed on it at (x, y)
+# character coordinates with a width/height. Connectors are directed
+# links between two boxes on the same whiteboard; they are rendered
+# automatically by the TUI.
+# ---------------------------------------------------------------------------
+
+
+class WhiteboardBase(SQLModel):
+    name: str = Field(index=True, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class Whiteboard(WhiteboardBase, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
+    updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
+
+
+class WhiteboardCreate(WhiteboardBase):
+    pass
+
+
+class WhiteboardUpdate(SQLModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=2000)
+
+
+class WhiteboardRead(WhiteboardBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class BoxBase(SQLModel):
+    label: str = Field(min_length=1, max_length=200)
+    # Coordinates are in terminal character cells. Origin (0, 0) is the
+    # top-left corner of the whiteboard canvas.
+    x: int = Field(default=0, ge=0, le=1000)
+    y: int = Field(default=0, ge=0, le=1000)
+    width: int = Field(default=12, ge=3, le=200)
+    height: int = Field(default=3, ge=3, le=100)
+    whiteboard_id: int = Field(foreign_key="whiteboard.id", index=True)
+
+
+class Box(BoxBase, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
+    updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
+
+
+class BoxCreate(BoxBase):
+    pass
+
+
+class BoxUpdate(SQLModel):
+    label: str | None = Field(default=None, min_length=1, max_length=200)
+    x: int | None = Field(default=None, ge=0, le=1000)
+    y: int | None = Field(default=None, ge=0, le=1000)
+    width: int | None = Field(default=None, ge=3, le=200)
+    height: int | None = Field(default=None, ge=3, le=100)
+
+
+class BoxRead(BoxBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class ConnectorBase(SQLModel):
+    whiteboard_id: int = Field(foreign_key="whiteboard.id", index=True)
+    source_box_id: int = Field(foreign_key="box.id", index=True)
+    target_box_id: int = Field(foreign_key="box.id", index=True)
+    label: str | None = Field(default=None, max_length=100)
+
+
+class Connector(ConnectorBase, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: datetime = Field(default_factory=_utcnow, nullable=False)
+    updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
+
+
+class ConnectorCreate(ConnectorBase):
+    pass
+
+
+class ConnectorUpdate(SQLModel):
+    label: str | None = Field(default=None, max_length=100)
+
+
+class ConnectorRead(ConnectorBase):
+    id: int
+    created_at: datetime
+    updated_at: datetime
