@@ -56,6 +56,11 @@ def db_engine(monkeypatch: pytest.MonkeyPatch) -> Generator[object, None, None]:
     """
     # Force local mode regardless of the host shell's environment.
     monkeypatch.setenv("SYSTEMA2_MODE", "local")
+    # Skip the landing module-picker screen so task/whiteboard tests can
+    # press keys directly against the default tasks view. The tests that
+    # exercise the picker itself (``test_tui_module_picker.py``) unset
+    # this inside their own fixtures.
+    monkeypatch.setenv("SYSTEMA2_SKIP_MODULE_PICKER", "1")
 
     engine = _make_in_memory_engine()
     monkeypatch.setattr(database_module, "engine", engine)
