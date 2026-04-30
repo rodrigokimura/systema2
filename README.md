@@ -86,11 +86,40 @@ palette.
 | `g` / `G`              | jump to first / last row                     |
 | `ctrl+d` / `ctrl+u`    | half-page down / up                          |
 | `ctrl+w`               | switch pane (tasks ↔ projects sidebar)       |
+| `w`                    | open the whiteboard picker                   |
 | `r`                    | refresh                                      |
 | `q`                    | quit                                         |
 
 Inside modal dialogs the usual text-editing keys apply; `ctrl+s` saves
 and `escape` cancels.
+
+#### Whiteboards
+
+The TUI also ships a lightweight whiteboard editor. Press `w` from the
+main task screen to open the picker, then pick a board or press `n` to
+create a new one.
+
+The board is a fixed-size character grid. Boxes are drawn with Unicode
+box-drawing glyphs; connectors between two boxes are routed as
+orthogonal L-shaped poly-lines with an arrowhead at the target end.
+Boxes are drawn on top of connectors so outlines stay clean.
+
+| Key                         | Action                                           |
+|-----------------------------|--------------------------------------------------|
+| `n`                         | create a new box                                 |
+| `h` / `j` / `k` / `l`       | move the selected box by 1 cell                  |
+| `H` / `J` / `K` / `L`       | move the selected box by 5 cells                 |
+| `tab` / `shift+tab`         | cycle selection between boxes                    |
+| `c`                         | start a connector from the selected box;         |
+|                             | press `c` again on the target box to commit      |
+|                             | (or on the same box again to cancel)             |
+| `x`                         | delete the selected box (and its connectors)     |
+| `r`                         | rename the selected box                          |
+| `q` / `escape`              | leave the whiteboard                             |
+
+Whiteboards, boxes, and connectors are persisted as separate tables
+(`whiteboard`, `box`, `connector`) in the same SQLite database used by
+tasks and projects.
 
 ### Server
 

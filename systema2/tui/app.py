@@ -13,6 +13,7 @@ from systema2.repository import RepositoryError, get_repository
 from systema2.tui.screens.delete import DeleteProjectScreen, DeleteTaskScreen
 from systema2.tui.screens.form import AddTaskScreen, EditTaskScreen
 from systema2.tui.screens.project_form import AddProjectScreen, EditProjectScreen
+from systema2.tui.screens.whiteboard_list import WhiteboardListScreen
 
 # Sentinels for the sidebar
 _ALL = "all"
@@ -64,6 +65,8 @@ class Systema2App(App[None]):
         Binding("ctrl+d", "scroll_half_down", "½↓", show=False),
         Binding("ctrl+u", "scroll_half_up", "½↑", show=False),
         Binding("ctrl+w", "focus_next_pane", "switch pane"),
+        # --- whiteboards ---
+        Binding("w", "whiteboards", "[w]hiteboards"),
         # --- misc ---
         Binding("r", "refresh", "refresh"),
         Binding("q", "quit", "[q]uit"),
@@ -295,6 +298,10 @@ class Systema2App(App[None]):
             table.focus()
         else:
             sidebar.focus()
+
+    def action_whiteboards(self) -> None:
+        """Open the whiteboard picker screen."""
+        self.push_screen(WhiteboardListScreen())
 
     # ------------------------------------------------------------------
     # vim-style navigation actions
