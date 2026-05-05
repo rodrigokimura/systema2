@@ -111,11 +111,11 @@ def test_create_task_with_project(client: TestClient) -> None:
 
 
 def test_create_task_with_missing_project_400(client: TestClient) -> None:
-    r = client.post("/tasks", json={"title": "T", "project_id": 999})
+    r = client.post("/tasks", json={"title": "T", "project_id": "999"})
     assert r.status_code == 400
     detail = r.json()["detail"]
     assert detail["error_code"] == "project_not_found"
-    assert detail["project_id"] == 999
+    assert detail["project_id"] == "999"
 
 
 def test_update_task_change_project(client: TestClient) -> None:
@@ -143,7 +143,7 @@ def test_update_task_clear_project(client: TestClient) -> None:
 
 def test_update_task_missing_project_400(client: TestClient) -> None:
     tid = client.post("/tasks", json={"title": "T"}).json()["id"]
-    r = client.patch(f"/tasks/{tid}", json={"project_id": 999})
+    r = client.patch(f"/tasks/{tid}", json={"project_id": "999"})
     assert r.status_code == 400
     assert r.json()["detail"]["error_code"] == "project_not_found"
 

@@ -40,7 +40,7 @@ def _handle_repo_error(exc: RepositoryError) -> None:
 
 
 def list_tasks(
-    project: int | None = typer.Option(
+    project: str | None = typer.Option(
         None, "--project", "-p", help="Filter to tasks in this project id."
     ),
     unassigned: bool = typer.Option(
@@ -84,7 +84,7 @@ def create_task(
     completed: bool = typer.Option(
         False, "--completed/--not-completed", help="Mark task as completed."
     ),
-    project: int | None = typer.Option(
+    project: str | None = typer.Option(
         None, "--project", "-p", help="Assign to this project id."
     ),
     priority: Priority = typer.Option(
@@ -121,13 +121,13 @@ def create_task(
 
 
 def update_task(
-    task_id: int = typer.Argument(..., help="ID of the task to update."),
+    task_id: str = typer.Argument(..., help="ID of the task to update."),
     title: str | None = typer.Option(None, "--title", "-t"),
     description: str | None = typer.Option(None, "--description", "-d"),
     completed: bool | None = typer.Option(
         None, "--completed/--not-completed", help="Set completion status."
     ),
-    project: int | None = typer.Option(
+    project: str | None = typer.Option(
         None, "--project", "-p", help="Reassign to this project id."
     ),
     clear_project: bool = typer.Option(
@@ -198,7 +198,7 @@ def update_task(
 
 
 def delete_task(
-    task_id: int = typer.Argument(..., help="ID of the task to delete."),
+    task_id: str = typer.Argument(..., help="ID of the task to delete."),
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Skip confirmation prompt."
     ),

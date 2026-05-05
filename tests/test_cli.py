@@ -6,6 +6,7 @@ from typer.testing import CliRunner
 
 from systema2.cli import app as cli_app
 from systema2.models import Task
+from systema2.repository import get_repository
 
 
 @pytest.fixture
@@ -16,7 +17,7 @@ def runner() -> CliRunner:
 def test_cli_create(db_engine, runner: CliRunner) -> None:
     result = runner.invoke(cli_app, ["create", "first task", "-d", "desc here"])
     assert result.exit_code == 0, result.output
-    assert "Created task 1" in result.output
+    assert "Created task" in result.output
 
     with Session(db_engine) as session:
         tasks = list(session.exec(select(Task)).all())
@@ -39,53 +40,62 @@ def test_cli_list_empty(db_engine, runner: CliRunner) -> None:
 
 
 def test_cli_update(db_engine, runner: CliRunner) -> None:
-    runner.invoke(cli_app, ["create", "original"])
+    repo = get_repository()
+    task = repo.create_task(Task(title="original"))
 
-    result = runner.invoke(cli_app, ["update", "1", "-t", "renamed", "--completed"])
+    result = runner.invoke(
+        cli_app, ["update", task.id, "-t", "renamed", "--completed"]
+    )
     assert result.exit_code == 0, result.output
-    assert "Updated task 1" in result.output
+    assert f"Updated task {task.id}" in result.output
 
     with Session(db_engine) as session:
-        task = session.get(Task, 1)
-    assert task is not None
-    assert task.title == "renamed"
-    assert task.completed is True
+        fresh = session.get(Task, task.id)
+    assert fresh is not None
+    assert fresh.title == "renamed"
+    assert fresh.completed is True
 
 
-def test_cli_update_partial_preserves_title(db_engine, runner: CliRunner) -> None:
+def test_cli_update_partial_preserves_title(
+    db_engine, runner: CliRunner
+) -> None:
     """Regression: updating only --completed must not null out title."""
-    runner.invoke(cli_app, ["create", "keep me", "-d", "keep desc"])
+    repo = get_repository()
+    task = repo.create_task(Task(title="keep me", description="keep desc"))
 
-    result = runner.invoke(cli_app, ["update", "1", "--completed"])
+    result = runner.invoke(cli_app, ["update", task.id, "--completed"])
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as session:
-        task = session.get(Task, 1)
-    assert task is not None
-    assert task.title == "keep me"
-    assert task.description == "keep desc"
-    assert task.completed is True
+        fresh = session.get(Task, task.id)
+    assert fresh is not None
+    assert fresh.title == "keep me"
+    assert fresh.description == "keep desc"
+    assert fresh.completed is True
 
 
 def test_cli_update_not_found(db_engine, runner: CliRunner) -> None:
-    result = runner.invoke(cli_app, ["update", "999", "-t", "x"])
+    result = runner.invoke(
+        cli_app, ["update", "nonexistent", "-t", "x"]
+    )
     assert result.exit_code == 1
     assert "not found" in result.output
 
 
 def test_cli_delete(db_engine, runner: CliRunner) -> None:
-    runner.invoke(cli_app, ["create", "doomed"])
+    repo = get_repository()
+    task = repo.create_task(Task(title="doomed"))
 
-    result = runner.invoke(cli_app, ["delete", "1", "--yes"])
+    result = runner.invoke(cli_app, ["delete", task.id, "--yes"])
     assert result.exit_code == 0, result.output
-    assert "Deleted task 1" in result.output
+    assert f"Deleted task {task.id}" in result.output
 
     with Session(db_engine) as session:
-        assert session.get(Task, 1) is None
+        assert session.get(Task, task.id) is None
 
 
 def test_cli_delete_not_found(db_engine, runner: CliRunner) -> None:
-    result = runner.invoke(cli_app, ["delete", "999", "--yes"])
+    result = runner.invoke(cli_app, ["delete", "nonexistent", "--yes"])
     assert result.exit_code == 1
     assert "not found" in result.output
 

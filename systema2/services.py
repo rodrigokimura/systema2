@@ -29,7 +29,7 @@ from systema2.models import (
 class ProjectNotFoundError(LookupError):
     """Raised when an operation references a non-existent project."""
 
-    def __init__(self, project_id: int) -> None:
+    def __init__(self, project_id: str) -> None:
         super().__init__(f"Project {project_id} not found")
         self.project_id = project_id
 
@@ -40,7 +40,7 @@ def _session() -> Session:
     return Session(database.engine)
 
 
-def _assert_project_exists(session: Session, project_id: int | None) -> None:
+def _assert_project_exists(session: Session, project_id: str | None) -> None:
     if project_id is None:
         return
     if session.get(Project, project_id) is None:
@@ -55,7 +55,7 @@ def _assert_project_exists(session: Session, project_id: int | None) -> None:
 def list_tasks(
     session: Session,
     *,
-    project_id: int | None = None,
+    project_id: str | None = None,
     unassigned: bool = False,
     priority: Priority | None = None,
     due_before: date | None = None,
@@ -73,7 +73,7 @@ def list_tasks(
     return list(session.exec(stmt).all())
 
 
-def get_task(session: Session, task_id: int) -> Task | None:
+def get_task(session: Session, task_id: str) -> Task | None:
     return session.get(Task, task_id)
 
 
@@ -87,7 +87,7 @@ def create_task(session: Session, payload: TaskCreate) -> Task:
 
 
 def update_task(
-    session: Session, task_id: int, payload: TaskUpdate
+    session: Session, task_id: str, payload: TaskUpdate
 ) -> Task | None:
     task = session.get(Task, task_id)
     if task is None:
@@ -110,7 +110,7 @@ def update_task(
     return task
 
 
-def delete_task(session: Session, task_id: int) -> bool:
+def delete_task(session: Session, task_id: str) -> bool:
     task = session.get(Task, task_id)
     if task is None:
         return False
@@ -128,7 +128,7 @@ def list_projects(session: Session) -> list[Project]:
     return list(session.exec(select(Project).order_by(Project.id)).all())
 
 
-def get_project(session: Session, project_id: int) -> Project | None:
+def get_project(session: Session, project_id: str) -> Project | None:
     return session.get(Project, project_id)
 
 
@@ -141,7 +141,7 @@ def create_project(session: Session, payload: ProjectCreate) -> Project:
 
 
 def update_project(
-    session: Session, project_id: int, payload: ProjectUpdate
+    session: Session, project_id: str, payload: ProjectUpdate
 ) -> Project | None:
     project = session.get(Project, project_id)
     if project is None:
@@ -161,7 +161,7 @@ def update_project(
     return project
 
 
-def delete_project(session: Session, project_id: int) -> bool:
+def delete_project(session: Session, project_id: str) -> bool:
     """Delete a project. Tasks in the project are unlinked (project_id=NULL)."""
     project = session.get(Project, project_id)
     if project is None:
@@ -187,7 +187,7 @@ def delete_project(session: Session, project_id: int) -> bool:
 
 def list_tasks_std(
     *,
-    project_id: int | None = None,
+    project_id: str | None = None,
     unassigned: bool = False,
     priority: Priority | None = None,
     due_before: date | None = None,
@@ -202,7 +202,7 @@ def list_tasks_std(
         )
 
 
-def get_task_std(task_id: int) -> Task | None:
+def get_task_std(task_id: str) -> Task | None:
     with _session() as s:
         return get_task(s, task_id)
 
@@ -212,12 +212,12 @@ def create_task_std(payload: TaskCreate) -> Task:
         return create_task(s, payload)
 
 
-def update_task_std(task_id: int, payload: TaskUpdate) -> Task | None:
+def update_task_std(task_id: str, payload: TaskUpdate) -> Task | None:
     with _session() as s:
         return update_task(s, task_id, payload)
 
 
-def delete_task_std(task_id: int) -> bool:
+def delete_task_std(task_id: str) -> bool:
     with _session() as s:
         return delete_task(s, task_id)
 
@@ -227,7 +227,7 @@ def list_projects_std() -> list[Project]:
         return list_projects(s)
 
 
-def get_project_std(project_id: int) -> Project | None:
+def get_project_std(project_id: str) -> Project | None:
     with _session() as s:
         return get_project(s, project_id)
 
@@ -238,12 +238,12 @@ def create_project_std(payload: ProjectCreate) -> Project:
 
 
 def update_project_std(
-    project_id: int, payload: ProjectUpdate
+    project_id: str, payload: ProjectUpdate
 ) -> Project | None:
     with _session() as s:
         return update_project(s, project_id, payload)
 
 
-def delete_project_std(project_id: int) -> bool:
+def delete_project_std(project_id: str) -> bool:
     with _session() as s:
         return delete_project(s, project_id)

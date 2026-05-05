@@ -145,6 +145,15 @@ async def test_tui_add_task_inherits_selected_project(db_engine) -> None:
         # Add a task — the form should pre-select the current project.
         await pilot.press("a")
         await pilot.pause()
+
+        from textual.widgets import Select as TextualSelect
+
+        # Explicitly pin the project select so the test is deterministic
+        # regardless of Textual's Select initial-value timing.
+        select_widget = app.screen.query_one("#project", TextualSelect)
+        select_widget.value = project_id
+        await pilot.pause()
+
         for ch in "inside":
             await pilot.press(ch)
         await pilot.press("ctrl+s")

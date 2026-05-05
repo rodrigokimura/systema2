@@ -15,7 +15,7 @@ from systema2.models import (
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
-def _get_or_404(session: Session, project_id: int) -> Project:
+def _get_or_404(session: Session, project_id: str) -> Project:
     project = services.get_project(session, project_id)
     if project is None:
         raise HTTPException(
@@ -33,7 +33,7 @@ def list_projects(
 
 @router.get("/{project_id}", response_model=ProjectRead)
 def get_project(
-    project_id: int, session: Session = Depends(get_session)
+    project_id: str, session: Session = Depends(get_session)
 ) -> Project:
     return _get_or_404(session, project_id)
 
@@ -49,7 +49,7 @@ def create_project(
 
 @router.patch("/{project_id}", response_model=ProjectRead)
 def update_project(
-    project_id: int,
+    project_id: str,
     payload: ProjectUpdate,
     session: Session = Depends(get_session),
 ) -> Project:
@@ -63,7 +63,7 @@ def update_project(
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_project(
-    project_id: int, session: Session = Depends(get_session)
+    project_id: str, session: Session = Depends(get_session)
 ) -> None:
     if not services.delete_project(session, project_id):
         raise HTTPException(
@@ -73,7 +73,7 @@ def delete_project(
 
 @router.get("/{project_id}/tasks", response_model=list[TaskRead])
 def list_project_tasks(
-    project_id: int, session: Session = Depends(get_session)
+    project_id: str, session: Session = Depends(get_session)
 ) -> list[Task]:
     _get_or_404(session, project_id)
     return services.list_tasks(session, project_id=project_id)

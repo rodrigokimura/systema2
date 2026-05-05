@@ -11,7 +11,7 @@ from systema2.tui.screens.whiteboard import (
 
 
 def _box(
-    box_id: int,
+    box_id: str,
     x: int,
     y: int,
     *,
@@ -21,7 +21,7 @@ def _box(
 ) -> Box:
     return Box(
         id=box_id,
-        whiteboard_id=1,
+        whiteboard_id="wb1",
         label=label or f"b{box_id}",
         x=x,
         y=y,
@@ -65,10 +65,13 @@ def test_single_box_is_drawn_with_corners_and_label() -> None:
 
 
 def test_connector_between_two_boxes_draws_horizontal_line() -> None:
-    a = _box(1, 2, 5, width=8, height=3, label="a")
-    b = _box(2, 40, 5, width=8, height=3, label="b")
+    a = _box("b1", 2, 5, width=8, height=3, label="a")
+    b = _box("b2", 40, 5, width=8, height=3, label="b")
     conn = Connector(
-        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+        id="c1",
+        whiteboard_id="wb1",
+        source_box_id="b1",
+        target_box_id="b2",
     )
     out = _plain(render_canvas([a, b], [conn]))
     # The two boxes share the same centre row; the connector's horizontal
@@ -82,10 +85,13 @@ def test_connector_between_two_boxes_draws_horizontal_line() -> None:
 
 
 def test_connector_between_stacked_boxes_uses_vertical_leg() -> None:
-    a = _box(1, 10, 1, width=10, height=3, label="a")
-    b = _box(2, 10, 20, width=10, height=3, label="b")
+    a = _box("b1", 10, 1, width=10, height=3, label="a")
+    b = _box("b2", 10, 20, width=10, height=3, label="b")
     conn = Connector(
-        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+        id="c1",
+        whiteboard_id="wb1",
+        source_box_id="b1",
+        target_box_id="b2",
     )
     out = _plain(render_canvas([a, b], [conn]))
     # Somewhere between the two boxes there should be a vertical pipe on
@@ -96,8 +102,8 @@ def test_connector_between_stacked_boxes_uses_vertical_leg() -> None:
 
 
 def test_selected_box_has_distinct_style() -> None:
-    box = _box(1, 5, 5)
-    text = render_canvas([box], [], selected_box_id=1)
+    box = _box("b1", 5, 5)
+    text = render_canvas([box], [], selected_box_id="b1")
     # The Rich ``Text`` records per-span styles; the selected style is
     # applied to the box characters.
     styles = {str(span.style) for span in text.spans}
@@ -115,10 +121,13 @@ def test_horizontal_s_shape_has_two_corner_bends() -> None:
     # and arrive at B horizontally. Two bends are expected: ┐ on
     # A's centre row and └ on B's centre row, both on the same midpoint
     # column with a vertical run of │ between them.
-    a = _box(1, 2, 2, width=10, height=3, label="a")
-    b = _box(2, 40, 20, width=10, height=3, label="b")
+    a = _box("b1", 2, 2, width=10, height=3, label="a")
+    b = _box("b2", 40, 20, width=10, height=3, label="b")
     conn = Connector(
-        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+        id="c1",
+        whiteboard_id="wb1",
+        source_box_id="b1",
+        target_box_id="b2",
     )
     out = _plain(render_canvas([a, b], [conn]))
     # A's centre row is y=3, B's centre row is y=21. Ignore the row
@@ -148,10 +157,13 @@ def test_vertical_s_shape_has_two_corner_bends() -> None:
     # Vertically-dominant separation: the vertical gap is larger than
     # the horizontal one, so the router picks a vertical S. Expect:
     # exit A downward, turn right at the midpoint row, descend into B.
-    a = _box(1, 20, 1, width=8, height=3, label="a")
-    b = _box(2, 40, 30, width=8, height=3, label="b")
+    a = _box("b1", 20, 1, width=8, height=3, label="a")
+    b = _box("b2", 40, 30, width=8, height=3, label="b")
     conn = Connector(
-        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+        id="c1",
+        whiteboard_id="wb1",
+        source_box_id="b1",
+        target_box_id="b2",
     )
     out = _plain(render_canvas([a, b], [conn]))
     # The two bends for a down-right vertical S are └ on A's column
@@ -183,10 +195,13 @@ def test_vertical_s_shape_has_two_corner_bends() -> None:
 def test_s_shape_midpoint_column_is_between_the_two_boxes() -> None:
     # For a right-going horizontal S, the dogleg midpoint column must
     # sit in the clear space between the two boxes, not inside either.
-    a = _box(1, 0, 0, width=10, height=3, label="a")  # cols 0..9
-    b = _box(2, 50, 20, width=10, height=3, label="b")  # cols 50..59
+    a = _box("b1", 0, 0, width=10, height=3, label="a")  # cols 0..9
+    b = _box("b2", 50, 20, width=10, height=3, label="b")  # cols 50..59
     conn = Connector(
-        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+        id="c1",
+        whiteboard_id="wb1",
+        source_box_id="b1",
+        target_box_id="b2",
     )
     out = _plain(render_canvas([a, b], [conn]))
     # A's centre row is y=1; look for the connector's ┐ bend on that
@@ -200,10 +215,13 @@ def test_s_shape_midpoint_column_is_between_the_two_boxes() -> None:
 def test_s_shape_reverses_direction_for_left_going_connector() -> None:
     # Flip source and target: connector goes right-to-left, so the
     # arrowhead must be ◀ at the right edge of the target box.
-    a = _box(1, 50, 2, width=10, height=3, label="a")
-    b = _box(2, 2, 20, width=10, height=3, label="b")
+    a = _box("b1", 50, 2, width=10, height=3, label="a")
+    b = _box("b2", 2, 20, width=10, height=3, label="b")
     conn = Connector(
-        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+        id="c1",
+        whiteboard_id="wb1",
+        source_box_id="b1",
+        target_box_id="b2",
     )
     out = _plain(render_canvas([a, b], [conn]))
     assert any("\u25c0" in row for row in out)
@@ -214,10 +232,13 @@ def test_s_shape_reverses_direction_for_left_going_connector() -> None:
 def test_boxes_are_drawn_on_top_of_connectors() -> None:
     # Place a connector endpoint so its horizontal leg would pass through
     # the interior of box ``b`` if the z-order were wrong.
-    a = _box(1, 0, 5, width=8, height=3, label="a")
-    b = _box(2, 20, 5, width=12, height=3, label="BBB")
+    a = _box("b1", 0, 5, width=8, height=3, label="a")
+    b = _box("b2", 20, 5, width=12, height=3, label="BBB")
     conn = Connector(
-        id=1, whiteboard_id=1, source_box_id=1, target_box_id=2
+        id="c1",
+        whiteboard_id="wb1",
+        source_box_id="b1",
+        target_box_id="b2",
     )
     out = _plain(render_canvas([a, b], [conn]))
     # Interior row of box b should contain its label, not a dash from the

@@ -27,8 +27,8 @@ def test_create_and_list_whiteboards(session: Session) -> None:
     assert wb.name == "planning"
 
     wbs.create_whiteboard(session, WhiteboardCreate(name="architecture"))
-    names = [w.name for w in wbs.list_whiteboards(session)]
-    assert names == ["planning", "architecture"]
+    names = sorted(w.name for w in wbs.list_whiteboards(session))
+    assert names == ["architecture", "planning"]
 
 
 def test_update_whiteboard(session: Session) -> None:
@@ -70,8 +70,10 @@ def test_delete_whiteboard_cascades_boxes_and_connectors(
 
 def test_create_box_requires_existing_whiteboard(session: Session) -> None:
     with pytest.raises(wbs.WhiteboardNotFoundError) as exc:
-        wbs.create_box(session, BoxCreate(whiteboard_id=999, label="x"))
-    assert exc.value.whiteboard_id == 999
+        wbs.create_box(
+            session, BoxCreate(whiteboard_id="nonexistent", label="x")
+        )
+    assert exc.value.whiteboard_id == "nonexistent"
 
 
 def test_update_and_move_box(session: Session) -> None:
@@ -177,14 +179,18 @@ def test_connector_unknown_source_or_target(session: Session) -> None:
         wbs.create_connector(
             session,
             ConnectorCreate(
-                whiteboard_id=wb.id, source_box_id=a.id, target_box_id=999
+                whiteboard_id=wb.id,
+                source_box_id=a.id,
+                target_box_id="nonexistent",
             ),
         )
     with pytest.raises(wbs.BoxNotFoundError):
         wbs.create_connector(
             session,
             ConnectorCreate(
-                whiteboard_id=wb.id, source_box_id=999, target_box_id=a.id
+                whiteboard_id=wb.id,
+                source_box_id="nonexistent",
+                target_box_id=a.id,
             ),
         )
 
