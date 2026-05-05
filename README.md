@@ -9,7 +9,7 @@ Managed with **uv**.
 - Task priority (**H**igh / **M**edium / **L**ow, default Medium)
 - Optional task due date (ISO `YYYY-MM-DD`); overdue tasks highlighted
 - CRUD endpoints for both; deleting a project unlinks its tasks
-- `/tasks?project_id=N`, `?unassigned=true`, `?priority=H`, `?due_before=YYYY-MM-DD` filters
+- `/tasks?project_id=<id>`, `?unassigned=true`, `?priority=H`, `?due_before=YYYY-MM-DD` filters
 - Automatic request validation via Pydantic/SQLModel schemas
 - Auto-generated OpenAPI docs at `/docs` and `/redoc`
 - SQLite database auto-created on startup via a FastAPI lifespan handler
@@ -35,32 +35,32 @@ uv sync          # creates .venv and installs all deps from uv.lock
 ### CLI / TUI (local mode — default)
 
 ```bash
-# Tasks
-uv run systema2 create "buy milk" -d "2L, semi-skimmed"
+# Tasks (IDs are nanoids — capture them from the create output)
+task_id=$(uv run systema2 create "buy milk" -d "2L, semi-skimmed" | grep -oP 'Created task \K\S+')
 uv run systema2 list
-uv run systema2 update 1 --completed
-uv run systema2 delete 1 --yes
+uv run systema2 update "$task_id" --completed
+uv run systema2 delete "$task_id" --yes
 
 # Projects
-uv run systema2 project create "home" -d "Household chores"
+project_id=$(uv run systema2 project create "home" -d "Household chores" | grep -oP 'Created project \K\S+')
 uv run systema2 project list
-uv run systema2 project show 1 --with-tasks
+uv run systema2 project show "$project_id" --with-tasks
 
 # Link a task to a project
-uv run systema2 create "clean fridge" -p 1
-uv run systema2 list -p 1          # filter by project
-uv run systema2 list --unassigned  # tasks with no project
-uv run systema2 update 2 --clear-project
+uv run systema2 create "clean fridge" -p "$project_id"
+uv run systema2 list -p "$project_id"  # filter by project
+uv run systema2 list --unassigned       # tasks with no project
+uv run systema2 update "$task_id" --clear-project
 
 # Task priority (H/M/L, default M)
 uv run systema2 create "ship it" -P H
-uv run systema2 update 1 -P L
-uv run systema2 list -P H          # filter by priority
+uv run systema2 update "$task_id" -P L
+uv run systema2 list -P H              # filter by priority
 
 # Due date (YYYY-MM-DD, optional)
 uv run systema2 create "review PR" -D 2030-05-15
-uv run systema2 update 1 -D 2030-06-01
-uv run systema2 update 1 --clear-due
+uv run systema2 update "$task_id" -D 2030-06-01
+uv run systema2 update "$task_id" --clear-due
 uv run systema2 list --due-before 2030-12-31
 
 # TUI
@@ -240,7 +240,7 @@ systema2/
 
 | Field         | Type            | Notes                              |
 |---------------|-----------------|------------------------------------|
-| `id`          | `int`           | Primary key, auto-assigned         |
+| `id`          | `str` (nanoid)  | Primary key, auto-assigned         |
 | `name`        | `str`           | Required, 1–200 chars, indexed     |
 | `description` | `str \| None`   | Optional, up to 2000 chars         |
 | `created_at`  | `datetime` (UTC)| Set on creation                    |
@@ -250,13 +250,13 @@ systema2/
 
 | Field         | Type            | Notes                              |
 |---------------|-----------------|------------------------------------|
-| `id`          | `int`           | Primary key, auto-assigned         |
+| `id`          | `str` (nanoid)  | Primary key, auto-assigned         |
 | `title`       | `str`           | Required, 1–200 chars, indexed     |
 | `description` | `str \| None`   | Optional, up to 2000 chars         |
 | `completed`   | `bool`          | Defaults to `false`                |
 | `priority`    | `"H"`/`"M"`/`"L"` | High / Medium / Low, default `"M"` |
 | `due_date`    | `date \| None`  | ISO `YYYY-MM-DD`; overdue tasks are rendered in red |
-| `project_id`  | `int \| None`   | FK to `project.id`; `None` = no project |
+| `project_id`  | `str \| None`   | FK to `project.id`; `None` = no project |
 | `created_at`  | `datetime` (UTC)| Set on creation                    |
 | `updated_at`  | `datetime` (UTC)| Updated on every successful PATCH  |
 
@@ -272,7 +272,7 @@ Base URL: `http://127.0.0.1:8000`
 | Method | Path                          | Description                         | Success              |
 |--------|-------------------------------|-------------------------------------|----------------------|
 | GET    | `/`                           | Health / info                       | 200                  |
-| GET    | `/tasks`                      | List tasks (`?project_id=N`, `?unassigned=true`) | 200     |
+| GET    | `/tasks`                      | List tasks (`?project_id=<id>`, `?unassigned=true`) | 200     |
 | GET    | `/tasks/{id}`                 | Get one task                        | 200 / 404            |
 | POST   | `/tasks`                      | Create a task                       | 201 / 400 / 422      |
 | PATCH  | `/tasks/{id}`                 | Partially update a task             | 200 / 400 / 404 / 422|
@@ -285,7 +285,7 @@ Base URL: `http://127.0.0.1:8000`
 | DELETE | `/projects/{id}`              | Delete a project (unlinks its tasks)| 204 / 404            |
 
 `POST`/`PATCH` on `/tasks` with a non-existent `project_id` return **400**
-with `{"detail": {"error_code": "project_not_found", "project_id": N}}`.
+with `{"detail": {"error_code": "project_not_found", "project_id": "<id>"}}`.
 
 ### Create a task
 
@@ -297,7 +297,7 @@ curl -X POST http://127.0.0.1:8000/tasks \
 
 ```json
 {
-  "id": 1,
+  "id": "abc123XYZ...",
   "title": "buy milk",
   "description": "2L, semi-skimmed",
   "completed": false,
@@ -315,7 +315,7 @@ curl http://127.0.0.1:8000/tasks
 ### Get one task
 
 ```bash
-curl http://127.0.0.1:8000/tasks/1
+curl http://127.0.0.1:8000/tasks/<id>
 ```
 
 Returns `404` with `{"detail": "Task not found"}` if the id does not exist.
@@ -325,7 +325,7 @@ Returns `404` with `{"detail": "Task not found"}` if the id does not exist.
 Any subset of fields may be provided; omitted fields are untouched.
 
 ```bash
-curl -X PATCH http://127.0.0.1:8000/tasks/1 \
+curl -X PATCH http://127.0.0.1:8000/tasks/<id> \
      -H 'Content-Type: application/json' \
      -d '{"completed": true}'
 ```
@@ -333,7 +333,7 @@ curl -X PATCH http://127.0.0.1:8000/tasks/1 \
 ### Delete a task
 
 ```bash
-curl -X DELETE http://127.0.0.1:8000/tasks/1
+curl -X DELETE http://127.0.0.1:8000/tasks/<id>
 ```
 
 Responds with `204 No Content` on success.
