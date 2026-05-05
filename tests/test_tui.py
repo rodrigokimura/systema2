@@ -44,6 +44,9 @@ async def test_tui_edit_task(db_engine) -> None:
     with Session(db_engine) as session:
         session.add(Task(title="original"))
         session.commit()
+        task = session.exec(select(Task)).first()
+        assert task is not None
+        task_id = task.id
 
     app = Systema2App()
     async with app.run_test() as pilot:
@@ -59,9 +62,9 @@ async def test_tui_edit_task(db_engine) -> None:
         await pilot.pause()
 
     with Session(db_engine) as session:
-        tasks = list(session.exec(select(Task)).all())
-    assert len(tasks) == 1
-    assert tasks[0].title == "renamed"
+        fresh = session.get(Task, task_id)
+    assert fresh is not None
+    assert fresh.title == "renamed"
 
 
 async def test_tui_edit_without_selection_notifies(db_engine) -> None:
@@ -76,6 +79,9 @@ async def test_tui_delete_task(db_engine) -> None:
     with Session(db_engine) as session:
         session.add(Task(title="doomed"))
         session.commit()
+        task = session.exec(select(Task)).first()
+        assert task is not None
+        task_id = task.id
 
     app = Systema2App()
     async with app.run_test() as pilot:
@@ -88,14 +94,16 @@ async def test_tui_delete_task(db_engine) -> None:
         await pilot.pause()
 
     with Session(db_engine) as session:
-        tasks = list(session.exec(select(Task)).all())
-    assert tasks == []
+        assert session.get(Task, task_id) is None
 
 
 async def test_tui_delete_cancelled(db_engine) -> None:
     with Session(db_engine) as session:
         session.add(Task(title="keep me"))
         session.commit()
+        task = session.exec(select(Task)).first()
+        assert task is not None
+        task_id = task.id
 
     app = Systema2App()
     async with app.run_test() as pilot:
@@ -106,6 +114,6 @@ async def test_tui_delete_cancelled(db_engine) -> None:
         await pilot.pause()
 
     with Session(db_engine) as session:
-        tasks = list(session.exec(select(Task)).all())
-    assert len(tasks) == 1
-    assert tasks[0].title == "keep me"
+        fresh = session.get(Task, task_id)
+    assert fresh is not None
+    assert fresh.title == "keep me"

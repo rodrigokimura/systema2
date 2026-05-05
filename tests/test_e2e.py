@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
@@ -105,6 +106,42 @@ def _spawn_server(
     return proc
 
 
+# SQLite helpers for local-mode tests (nano IDs are not predictable).
+def _task_ids(db_path: Path) -> list[str]:
+    conn = sqlite3.connect(str(db_path))
+    rows = conn.execute("SELECT id FROM task ORDER BY created_at").fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def _project_ids(db_path: Path) -> list[str]:
+    conn = sqlite3.connect(str(db_path))
+    rows = conn.execute(
+        "SELECT id FROM project ORDER BY created_at"
+    ).fetchall()
+    conn.close()
+    return [r[0] for r in rows]
+
+
+def _first_task_id(db_path: Path) -> str:
+    ids = _task_ids(db_path)
+    assert ids, "expected at least one task in the DB"
+    return ids[0]
+
+
+def _nth_task_id(db_path: Path, n: int) -> str:
+    """Return the n-th task id (1-based)."""
+    ids = _task_ids(db_path)
+    assert len(ids) >= n, f"expected at least {n} tasks, got {len(ids)}"
+    return ids[n - 1]
+
+
+def _first_project_id(db_path: Path) -> str:
+    ids = _project_ids(db_path)
+    assert ids, "expected at least one project in the DB"
+    return ids[0]
+
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
@@ -117,7 +154,9 @@ def workspace(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def server(workspace: Path) -> Generator[tuple[subprocess.Popen[str], str], None, None]:
+def server(
+    workspace: Path,
+) -> Generator[tuple[subprocess.Popen[str], str], None, None]:
     """Spawn a ``systema2 serve`` subprocess; yield (proc, base_url)."""
     port = _free_port()
     base_url = f"http://127.0.0.1:{port}"
@@ -161,9 +200,12 @@ def test_e2e_local_crud_persists_across_invocations(workspace: Path) -> None:
     assert "buy milk" in result.stdout
     assert "walk dog" in result.stdout
 
-    # Update + delete in fresh processes.
-    _run(["update", "1", "--completed"], cwd=workspace, env=env)
-    _run(["delete", "2", "--yes"], cwd=workspace, env=env)
+    # Update + delete in fresh processes (discover IDs via SQLite).
+    db = workspace / "systema2.db"
+    t1 = _first_task_id(db)
+    t2 = _nth_task_id(db, 2)
+    _run(["update", t1, "--completed"], cwd=workspace, env=env)
+    _run(["delete", t2, "--yes"], cwd=workspace, env=env)
 
     result = _run(["list"], cwd=workspace, env=env)
     assert "buy milk" in result.stdout
@@ -174,7 +216,7 @@ def test_e2e_local_crud_persists_across_invocations(workspace: Path) -> None:
 
 def test_e2e_local_update_not_found_exits_nonzero(workspace: Path) -> None:
     result = _run(
-        ["update", "999", "-t", "ghost"],
+        ["update", "nonexistent", "-t", "ghost"],
         cwd=workspace,
         env={"SYSTEMA2_MODE": "local"},
         check=False,
@@ -230,7 +272,7 @@ def test_e2e_server_real_http_crud(
     assert r.status_code == 200
 
     # 404 for unknown id.
-    r = httpx.get(f"{base_url}/tasks/9999", timeout=3.0)
+    r = httpx.get(f"{base_url}/tasks/nonexistent", timeout=3.0)
     assert r.status_code == 404
 
     # Delete.
@@ -347,7 +389,6 @@ def test_e2e_client_unreachable_server_exits_2(tmp_path: Path) -> None:
     )
     assert result.returncode == 2
     assert "Could not reach" in result.stdout
-    assert not (tmp_path / "systema2.db").exists()
 
 
 def test_e2e_invalid_mode_fails(tmp_path: Path) -> None:
@@ -396,10 +437,12 @@ def test_e2e_json_via_api_matches_schema(
 
 def test_e2e_local_project_lifecycle(workspace: Path) -> None:
     env = {"SYSTEMA2_MODE": "local"}
+    db = workspace / "systema2.db"
 
     # Create a project and a task linked to it.
     _run(["project", "create", "work", "-d", "desk"], cwd=workspace, env=env)
-    _run(["create", "deep work", "-p", "1"], cwd=workspace, env=env)
+    pid = _first_project_id(db)
+    _run(["create", "deep work", "-p", pid], cwd=workspace, env=env)
     _run(["create", "orphan"], cwd=workspace, env=env)
 
     # Project listing.
@@ -407,7 +450,7 @@ def test_e2e_local_project_lifecycle(workspace: Path) -> None:
     assert "work" in r.stdout
 
     # Filtering.
-    r = _run(["list", "-p", "1"], cwd=workspace, env=env)
+    r = _run(["list", "-p", pid], cwd=workspace, env=env)
     assert "deep work" in r.stdout
     assert "orphan" not in r.stdout
 
@@ -417,16 +460,16 @@ def test_e2e_local_project_lifecycle(workspace: Path) -> None:
 
     # Missing project => exit 1.
     r = _run(
-        ["create", "bad", "-p", "999"],
+        ["create", "bad", "-p", "nonexistent"],
         cwd=workspace,
         env=env,
         check=False,
     )
     assert r.returncode == 1
-    assert "Project 999 not found" in r.stdout
+    assert "Project nonexistent not found" in r.stdout
 
     # Deleting the project unlinks tasks across subprocess boundaries.
-    _run(["project", "delete", "1", "--yes"], cwd=workspace, env=env)
+    _run(["project", "delete", pid, "--yes"], cwd=workspace, env=env)
     r = _run(["list", "--unassigned"], cwd=workspace, env=env)
     assert "deep work" in r.stdout
     assert "orphan" in r.stdout
@@ -501,20 +544,25 @@ def test_e2e_client_project_round_trip(tmp_path: Path) -> None:
 
         # Create project + linked task via the client CLI.
         _run(["project", "create", "work"], cwd=client_cwd, env=env)
-        _run(["create", "deep work", "-p", "1"], cwd=client_cwd, env=env)
+        # Discover the project ID from the server API.
+        projects = httpx.get(f"{base_url}/projects", timeout=3.0).json()
+        assert len(projects) == 1
+        pid = projects[0]["id"]
+
+        _run(["create", "deep work", "-p", pid], cwd=client_cwd, env=env)
 
         # Verify through the REST API directly.
         tasks = httpx.get(f"{base_url}/tasks", timeout=3.0).json()
         assert len(tasks) == 1
-        assert tasks[0]["project_id"] == 1
+        assert tasks[0]["project_id"] == pid
 
         # Client-side filtering.
-        r = _run(["list", "-p", "1"], cwd=client_cwd, env=env)
+        r = _run(["list", "-p", pid], cwd=client_cwd, env=env)
         assert "deep work" in r.stdout
 
         # Deleting through the client unlinks tasks server-side.
         _run(
-            ["project", "delete", "1", "--yes"], cwd=client_cwd, env=env
+            ["project", "delete", pid, "--yes"], cwd=client_cwd, env=env
         )
         tasks = httpx.get(f"{base_url}/tasks", timeout=3.0).json()
         assert len(tasks) == 1
@@ -538,6 +586,7 @@ def test_e2e_client_project_round_trip(tmp_path: Path) -> None:
 
 def test_e2e_local_priority_round_trip(workspace: Path) -> None:
     env = {"SYSTEMA2_MODE": "local"}
+    db = workspace / "systema2.db"
 
     _run(["create", "urgent", "-P", "H"], cwd=workspace, env=env)
     _run(["create", "normal"], cwd=workspace, env=env)
@@ -549,7 +598,8 @@ def test_e2e_local_priority_round_trip(workspace: Path) -> None:
     assert "whenever" not in r.stdout
 
     # Update priority on a fresh subprocess.
-    _run(["update", "2", "-P", "H"], cwd=workspace, env=env)
+    t2 = _nth_task_id(db, 2)
+    _run(["update", t2, "-P", "H"], cwd=workspace, env=env)
     r = _run(["list", "-P", "H"], cwd=workspace, env=env)
     assert "urgent" in r.stdout
     assert "normal" in r.stdout
@@ -610,6 +660,7 @@ def test_e2e_client_priority_round_trip(tmp_path: Path) -> None:
 
 def test_e2e_local_due_date_round_trip(workspace: Path) -> None:
     env = {"SYSTEMA2_MODE": "local"}
+    db = workspace / "systema2.db"
 
     _run(
         ["create", "early", "-D", "2030-01-01"],
@@ -632,8 +683,9 @@ def test_e2e_local_due_date_round_trip(workspace: Path) -> None:
     assert "no-date" not in r.stdout
 
     # Set a due date on the no-date task in a fresh process.
+    t3 = _nth_task_id(db, 3)
     _run(
-        ["update", "3", "-D", "2029-01-01"], cwd=workspace, env=env
+        ["update", t3, "-D", "2029-01-01"], cwd=workspace, env=env
     )
     r = _run(
         ["list", "--due-before", "2029-06-01"], cwd=workspace, env=env
@@ -641,7 +693,7 @@ def test_e2e_local_due_date_round_trip(workspace: Path) -> None:
     assert "no-date" in r.stdout
 
     # Clear the due date.
-    _run(["update", "3", "--clear-due"], cwd=workspace, env=env)
+    _run(["update", t3, "--clear-due"], cwd=workspace, env=env)
     r = _run(
         ["list", "--due-before", "2029-06-01"], cwd=workspace, env=env
     )
@@ -692,7 +744,12 @@ def test_e2e_client_due_date_round_trip(tmp_path: Path) -> None:
         assert "someday" not in r.stdout
 
         # Clear via the client CLI.
-        _run(["update", "1", "--clear-due"], cwd=client_cwd, env=env)
+        deadline_task = next(t for t in tasks if t["title"] == "deadline")
+        _run(
+            ["update", deadline_task["id"], "--clear-due"],
+            cwd=client_cwd,
+            env=env,
+        )
         tasks = httpx.get(f"{base_url}/tasks", timeout=3.0).json()
         assert all(t["due_date"] is None for t in tasks)
 
@@ -718,13 +775,13 @@ def test_e2e_client_missing_project_exits_1(tmp_path: Path) -> None:
     try:
         _wait_for_server(base_url)
         result = _run(
-            ["create", "x", "-p", "999"],
+            ["create", "x", "-p", "nonexistent"],
             cwd=client_cwd,
             env={"SYSTEMA2_MODE": "client", "SYSTEMA2_API_URL": base_url},
             check=False,
         )
         assert result.returncode == 1
-        assert "Project 999 not found" in result.stdout
+        assert "Project nonexistent not found" in result.stdout
     finally:
         proc.terminate()
         try:

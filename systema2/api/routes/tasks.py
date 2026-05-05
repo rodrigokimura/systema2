@@ -10,7 +10,7 @@ from systema2.models import Priority, Task, TaskCreate, TaskRead, TaskUpdate
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
-def _get_or_404(session: Session, task_id: int) -> Task:
+def _get_or_404(session: Session, task_id: str) -> Task:
     task = services.get_task(session, task_id)
     if task is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Task not found")
@@ -19,7 +19,7 @@ def _get_or_404(session: Session, task_id: int) -> Task:
 
 @router.get("", response_model=list[TaskRead])
 def list_tasks(
-    project_id: int | None = Query(
+    project_id: str | None = Query(
         None, description="Filter to tasks in this project."
     ),
     unassigned: bool = Query(
@@ -44,7 +44,7 @@ def list_tasks(
 
 
 @router.get("/{task_id}", response_model=TaskRead)
-def get_task(task_id: int, session: Session = Depends(get_session)) -> Task:
+def get_task(task_id: str, session: Session = Depends(get_session)) -> Task:
     return _get_or_404(session, task_id)
 
 
@@ -66,7 +66,7 @@ def create_task(
 
 @router.patch("/{task_id}", response_model=TaskRead)
 def update_task(
-    task_id: int,
+    task_id: str,
     payload: TaskUpdate,
     session: Session = Depends(get_session),
 ) -> Task:
@@ -87,7 +87,7 @@ def update_task(
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_task(
-    task_id: int, session: Session = Depends(get_session)
+    task_id: str, session: Session = Depends(get_session)
 ) -> None:
     if not services.delete_task(session, task_id):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Task not found")

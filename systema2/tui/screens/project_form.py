@@ -125,7 +125,7 @@ class AddProjectScreen(ProjectFormScreen):
 class EditProjectScreen(ProjectFormScreen):
     def __init__(self, project: Project) -> None:
         super().__init__(title=f"Edit Project #{project.id}", project=project)
-        self._project_id = project.id
+        self._project_id: str = project.id
 
     def _submit(self) -> None:
         name, description = self._collect()

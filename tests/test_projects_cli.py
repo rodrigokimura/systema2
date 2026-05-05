@@ -15,6 +15,18 @@ def runner() -> CliRunner:
     return CliRunner()
 
 
+def _last_project(session: Session) -> Project:
+    projects = list(session.exec(select(Project)).all())
+    assert projects, "expected at least one project in the DB"
+    return projects[-1]
+
+
+def _last_task(session: Session) -> Task:
+    tasks = list(session.exec(select(Task)).all())
+    assert tasks, "expected at least one task in the DB"
+    return tasks[-1]
+
+
 # ---------------------------------------------------------------------------
 # Project CRUD
 # ---------------------------------------------------------------------------
@@ -25,7 +37,7 @@ def test_project_create(db_engine, runner: CliRunner) -> None:
         cli_app, ["project", "create", "home", "-d", "chores"]
     )
     assert result.exit_code == 0, result.output
-    assert "Created project 1" in result.output
+    assert "Created project" in result.output
 
     with Session(db_engine) as s:
         projects = list(s.exec(select(Project)).all())
@@ -42,15 +54,17 @@ def test_project_list_empty(db_engine, runner: CliRunner) -> None:
 
 def test_project_update(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["project", "create", "old"])
+    with Session(db_engine) as s:
+        pid = _last_project(s).id
 
     result = runner.invoke(
-        cli_app, ["project", "update", "1", "-n", "renamed"]
+        cli_app, ["project", "update", pid, "-n", "renamed"]
     )
     assert result.exit_code == 0, result.output
-    assert "Updated project 1" in result.output
+    assert f"Updated project {pid}" in result.output
 
     with Session(db_engine) as s:
-        p = s.get(Project, 1)
+        p = s.get(Project, pid)
     assert p is not None
     assert p.name == "renamed"
 
@@ -58,41 +72,45 @@ def test_project_update(db_engine, runner: CliRunner) -> None:
 def test_project_update_partial_preserves_name(
     db_engine, runner: CliRunner
 ) -> None:
-    runner.invoke(
-        cli_app, ["project", "create", "keep", "-d", "old desc"]
-    )
+    runner.invoke(cli_app, ["project", "create", "keep", "-d", "old desc"])
+    with Session(db_engine) as s:
+        pid = _last_project(s).id
     result = runner.invoke(
-        cli_app, ["project", "update", "1", "-d", "new desc"]
+        cli_app, ["project", "update", pid, "-d", "new desc"]
     )
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as s:
-        p = s.get(Project, 1)
+        p = s.get(Project, pid)
     assert p is not None
     assert p.name == "keep"
     assert p.description == "new desc"
 
 
 def test_project_update_not_found(db_engine, runner: CliRunner) -> None:
-    result = runner.invoke(cli_app, ["project", "update", "999", "-n", "x"])
+    result = runner.invoke(cli_app, ["project", "update", "nonexistent", "-n", "x"])
     assert result.exit_code == 1
     assert "not found" in result.output
 
 
 def test_project_show(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["project", "create", "work"])
-    result = runner.invoke(cli_app, ["project", "show", "1"])
+    with Session(db_engine) as s:
+        pid = _last_project(s).id
+    result = runner.invoke(cli_app, ["project", "show", pid])
     assert result.exit_code == 0
     assert "work" in result.output
 
 
 def test_project_show_with_tasks(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["project", "create", "work"])
-    runner.invoke(cli_app, ["create", "deep work", "-p", "1"])
+    with Session(db_engine) as s:
+        pid = _last_project(s).id
+    runner.invoke(cli_app, ["create", "deep work", "-p", pid])
     runner.invoke(cli_app, ["create", "shallow"])
 
     result = runner.invoke(
-        cli_app, ["project", "show", "1", "--with-tasks"]
+        cli_app, ["project", "show", pid, "--with-tasks"]
     )
     assert result.exit_code == 0, result.output
     assert "work" in result.output
@@ -105,15 +123,17 @@ def test_project_delete_unlinks_tasks(
     db_engine, runner: CliRunner
 ) -> None:
     runner.invoke(cli_app, ["project", "create", "doomed"])
-    runner.invoke(cli_app, ["create", "task A", "-p", "1"])
-    runner.invoke(cli_app, ["create", "task B", "-p", "1"])
+    with Session(db_engine) as s:
+        pid = _last_project(s).id
+    runner.invoke(cli_app, ["create", "task A", "-p", pid])
+    runner.invoke(cli_app, ["create", "task B", "-p", pid])
 
-    result = runner.invoke(cli_app, ["project", "delete", "1", "--yes"])
+    result = runner.invoke(cli_app, ["project", "delete", pid, "--yes"])
     assert result.exit_code == 0, result.output
-    assert "Deleted project 1" in result.output
+    assert f"Deleted project {pid}" in result.output
 
     with Session(db_engine) as s:
-        assert s.get(Project, 1) is None
+        assert s.get(Project, pid) is None
         tasks = list(s.exec(select(Task)).all())
         assert len(tasks) == 2
         for t in tasks:
@@ -121,7 +141,7 @@ def test_project_delete_unlinks_tasks(
 
 
 def test_project_delete_not_found(db_engine, runner: CliRunner) -> None:
-    result = runner.invoke(cli_app, ["project", "delete", "999", "--yes"])
+    result = runner.invoke(cli_app, ["project", "delete", "nonexistent", "--yes"])
     assert result.exit_code == 1
     assert "not found" in result.output
 
@@ -133,46 +153,61 @@ def test_project_delete_not_found(db_engine, runner: CliRunner) -> None:
 
 def test_task_create_with_project(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["project", "create", "work"])
-    result = runner.invoke(cli_app, ["create", "deep work", "-p", "1"])
+    with Session(db_engine) as s:
+        pid = _last_project(s).id
+    result = runner.invoke(cli_app, ["create", "deep work", "-p", pid])
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
+        task = _last_task(s)
     assert task is not None
-    assert task.project_id == 1
+    assert task.project_id == pid
 
 
 def test_task_create_missing_project_exits_1(
     db_engine, runner: CliRunner
 ) -> None:
-    result = runner.invoke(cli_app, ["create", "x", "-p", "999"])
+    result = runner.invoke(cli_app, ["create", "x", "-p", "nonexistent"])
     assert result.exit_code == 1
-    assert "Project 999 not found" in result.output
+    assert "Project nonexistent not found" in result.output
 
 
 def test_task_update_change_project(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["project", "create", "p1"])
     runner.invoke(cli_app, ["project", "create", "p2"])
-    runner.invoke(cli_app, ["create", "T", "-p", "1"])
+    with Session(db_engine) as s:
+        p1 = _last_project(s)
+        # p2 is the one before p1 in the list... actually list is ordered by id.
+        projects = list(s.exec(select(Project)).all())
+    assert len(projects) == 2
+    p1_id, p2_id = projects[0].id, projects[1].id
 
-    result = runner.invoke(cli_app, ["update", "1", "-p", "2"])
+    runner.invoke(cli_app, ["create", "T", "-p", p1_id])
+    with Session(db_engine) as s:
+        tid = _last_task(s).id
+
+    result = runner.invoke(cli_app, ["update", tid, "-p", p2_id])
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
+        task = s.get(Task, tid)
     assert task is not None
-    assert task.project_id == 2
+    assert task.project_id == p2_id
 
 
 def test_task_update_clear_project(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["project", "create", "p"])
-    runner.invoke(cli_app, ["create", "T", "-p", "1"])
+    with Session(db_engine) as s:
+        pid = _last_project(s).id
+    runner.invoke(cli_app, ["create", "T", "-p", pid])
+    with Session(db_engine) as s:
+        tid = _last_task(s).id
 
-    result = runner.invoke(cli_app, ["update", "1", "--clear-project"])
+    result = runner.invoke(cli_app, ["update", tid, "--clear-project"])
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
+        task = s.get(Task, tid)
     assert task is not None
     assert task.project_id is None
 
@@ -181,10 +216,14 @@ def test_task_update_project_and_clear_conflict(
     db_engine, runner: CliRunner
 ) -> None:
     runner.invoke(cli_app, ["project", "create", "p"])
+    with Session(db_engine) as s:
+        pid = _last_project(s).id
     runner.invoke(cli_app, ["create", "T"])
+    with Session(db_engine) as s:
+        tid = _last_task(s).id
 
     result = runner.invoke(
-        cli_app, ["update", "1", "-p", "1", "--clear-project"]
+        cli_app, ["update", tid, "-p", pid, "--clear-project"]
     )
     assert result.exit_code == 2
     assert "not both" in result.output
@@ -193,20 +232,28 @@ def test_task_update_project_and_clear_conflict(
 def test_task_list_filter_by_project(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["project", "create", "p1"])
     runner.invoke(cli_app, ["project", "create", "p2"])
-    runner.invoke(cli_app, ["create", "a", "-p", "1"])
-    runner.invoke(cli_app, ["create", "b", "-p", "2"])
+    with Session(db_engine) as s:
+        projects = list(s.exec(select(Project)).all())
+    p1_id, p2_id = projects[0].id, projects[1].id
+
+    runner.invoke(cli_app, ["create", "alpha-task", "-p", p1_id])
+    runner.invoke(cli_app, ["create", "beta-task", "-p", p2_id])
     runner.invoke(cli_app, ["create", "orphan"])
 
-    result = runner.invoke(cli_app, ["list", "-p", "1"])
+    result = runner.invoke(cli_app, ["list", "-p", p1_id])
     assert result.exit_code == 0
-    assert "a" in result.output
-    assert "b" not in result.output
+    # Use long, unique titles so accidental matches in nanoid IDs are
+    # astronomically unlikely.
+    assert "alpha-task" in result.output
+    assert "beta-task" not in result.output
     assert "orphan" not in result.output
 
 
 def test_task_list_unassigned(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["project", "create", "p"])
-    runner.invoke(cli_app, ["create", "inside", "-p", "1"])
+    with Session(db_engine) as s:
+        pid = _last_project(s).id
+    runner.invoke(cli_app, ["create", "inside", "-p", pid])
     runner.invoke(cli_app, ["create", "outside"])
 
     result = runner.invoke(cli_app, ["list", "--unassigned"])
@@ -216,6 +263,6 @@ def test_task_list_unassigned(db_engine, runner: CliRunner) -> None:
 
 
 def test_task_list_filter_conflict(db_engine, runner: CliRunner) -> None:
-    result = runner.invoke(cli_app, ["list", "-p", "1", "--unassigned"])
+    result = runner.invoke(cli_app, ["list", "-p", "nonexistent", "--unassigned"])
     assert result.exit_code == 2
     assert "not both" in result.output

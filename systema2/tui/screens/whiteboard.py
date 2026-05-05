@@ -46,7 +46,7 @@ CANVAS_HEIGHT = 40
 
 @dataclass(frozen=True)
 class _RenderedBox:
-    box_id: int
+    box_id: str
     left: int
     top: int
     right: int  # inclusive
@@ -77,7 +77,7 @@ def render_canvas(
     boxes: Iterable[Box],
     connectors: Iterable[Connector],
     *,
-    selected_box_id: int | None = None,
+    selected_box_id: str | None = None,
     width: int = CANVAS_WIDTH,
     height: int = CANVAS_HEIGHT,
 ) -> Text:
@@ -89,7 +89,7 @@ def render_canvas(
     grid = [[" "] * width for _ in range(height)]
     styles: list[list[str | None]] = [[None] * width for _ in range(height)]
 
-    rendered: dict[int, _RenderedBox] = {}
+    rendered: dict[str, _RenderedBox] = {}
     for b in boxes:
         assert b.id is not None
         left, top, right, bottom = _clamp_to_canvas(b)
@@ -402,10 +402,10 @@ class WhiteboardScreen(Screen[None]):
         self._wb = whiteboard
         self._boxes: list[Box] = []
         self._connectors: list[Connector] = []
-        self._selected_id: int | None = None
+        self._selected_id: str | None = None
         # Set when the user presses ``c`` to start a connector; the next
         # ``c`` press on a different box finalises it.
-        self._connect_source_id: int | None = None
+        self._connect_source_id: str | None = None
 
     # ------------------------------------------------------------------
     # layout

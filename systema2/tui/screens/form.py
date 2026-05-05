@@ -44,7 +44,7 @@ TaskFormScreen {
 """
 
 # Sentinel value used in Select for "no project".
-_NO_PROJECT = 0
+_NO_PROJECT = "__none__"
 
 _PRIORITY_OPTIONS: list[tuple[str, str]] = [
     ("High (H)", Priority.HIGH.value),
@@ -77,24 +77,24 @@ class TaskFormScreen(ModalScreen[Task | None]):
 
     # ---- project select helpers ---------------------------------------
 
-    def _project_options(self) -> list[tuple[str, int]]:
-        opts: list[tuple[str, int]] = [("(no project)", _NO_PROJECT)]
+    def _project_options(self) -> list[tuple[str, str]]:
+        opts: list[tuple[str, str]] = [("(no project)", _NO_PROJECT)]
         for p in self._projects:
             label = f"#{p.id} {p.name}"
             assert p.id is not None
             opts.append((label, p.id))
         return opts
 
-    def _initial_project_value(self) -> int:
+    def _initial_project_value(self) -> str:
         if self._task_obj and self._task_obj.project_id is not None:
             return self._task_obj.project_id
         return _NO_PROJECT
 
-    def _selected_project_id(self) -> int | None:
+    def _selected_project_id(self) -> str | None:
         value = self.query_one("#project", Select).value
         if value == Select.BLANK or value == _NO_PROJECT:
             return None
-        return int(value)  # type: ignore[arg-type]
+        return str(value)  # type: ignore[arg-type]
 
     # ---- compose ------------------------------------------------------
 
@@ -156,6 +156,13 @@ class TaskFormScreen(ModalScreen[Task | None]):
 
     def on_mount(self) -> None:
         self.query_one("#title", Input).focus()
+        # Textual's Select can fail to honour a string ``value`` passed
+        # during ``compose()``; re-apply it after mount so the default
+        # project is reliably pre-selected.
+        select = self.query_one("#project", Select)
+        initial = self._initial_project_value()
+        if initial != _NO_PROJECT:
+            select.value = initial
 
     # ---- actions ------------------------------------------------------
 
@@ -192,7 +199,7 @@ class TaskFormScreen(ModalScreen[Task | None]):
 
     def _collect(
         self,
-    ) -> tuple[str, str | None, bool, Priority, date | None, int | None]:
+    ) -> tuple[str, str | None, bool, Priority, date | None, str | None]:
         title = self.query_one("#title", Input).value.strip()
         desc_raw = self.query_one("#description", Input).value.strip()
         completed = self.query_one("#completed", Checkbox).value
@@ -211,12 +218,12 @@ class AddTaskScreen(TaskFormScreen):
         self,
         *,
         projects: list[Project] | None = None,
-        default_project_id: int | None = None,
+        default_project_id: str | None = None,
     ) -> None:
         super().__init__(title="Add Task", projects=projects)
         self._default_project_id = default_project_id
 
-    def _initial_project_value(self) -> int:  # type: ignore[override]
+    def _initial_project_value(self) -> str:  # type: ignore[override]
         if self._default_project_id is not None:
             return self._default_project_id
         return super()._initial_project_value()

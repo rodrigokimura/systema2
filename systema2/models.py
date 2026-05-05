@@ -4,6 +4,8 @@ from enum import Enum
 import sqlalchemy as sa
 from sqlmodel import Field, SQLModel
 
+from systema2.nanoid import nanoid
+
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
@@ -28,7 +30,7 @@ class ProjectBase(SQLModel):
 
 
 class Project(ProjectBase, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=nanoid, primary_key=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
@@ -43,7 +45,7 @@ class ProjectUpdate(SQLModel):
 
 
 class ProjectRead(ProjectBase):
-    id: int
+    id: str
     created_at: datetime
     updated_at: datetime
 
@@ -78,13 +80,13 @@ class TaskBase(SQLModel):
         sa_column=_priority_sa_column(),
     )
     due_date: date | None = Field(default=None, index=True)
-    project_id: int | None = Field(
+    project_id: str | None = Field(
         default=None, foreign_key="project.id", index=True
     )
 
 
 class Task(TaskBase, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=nanoid, primary_key=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
@@ -100,11 +102,11 @@ class TaskUpdate(SQLModel):
     priority: Priority | None = None
     # ``None`` means "clear"; omitted means "don't touch" (via exclude_unset).
     due_date: date | None = None
-    project_id: int | None = None
+    project_id: str | None = None
 
 
 class TaskRead(TaskBase):
-    id: int
+    id: str
     created_at: datetime
     updated_at: datetime
 
@@ -125,7 +127,7 @@ class WhiteboardBase(SQLModel):
 
 
 class Whiteboard(WhiteboardBase, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=nanoid, primary_key=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
@@ -140,7 +142,7 @@ class WhiteboardUpdate(SQLModel):
 
 
 class WhiteboardRead(WhiteboardBase):
-    id: int
+    id: str
     created_at: datetime
     updated_at: datetime
 
@@ -153,11 +155,11 @@ class BoxBase(SQLModel):
     y: int = Field(default=0, ge=0, le=1000)
     width: int = Field(default=12, ge=3, le=200)
     height: int = Field(default=3, ge=3, le=100)
-    whiteboard_id: int = Field(foreign_key="whiteboard.id", index=True)
+    whiteboard_id: str = Field(foreign_key="whiteboard.id", index=True)
 
 
 class Box(BoxBase, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=nanoid, primary_key=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
@@ -175,20 +177,20 @@ class BoxUpdate(SQLModel):
 
 
 class BoxRead(BoxBase):
-    id: int
+    id: str
     created_at: datetime
     updated_at: datetime
 
 
 class ConnectorBase(SQLModel):
-    whiteboard_id: int = Field(foreign_key="whiteboard.id", index=True)
-    source_box_id: int = Field(foreign_key="box.id", index=True)
-    target_box_id: int = Field(foreign_key="box.id", index=True)
+    whiteboard_id: str = Field(foreign_key="whiteboard.id", index=True)
+    source_box_id: str = Field(foreign_key="box.id", index=True)
+    target_box_id: str = Field(foreign_key="box.id", index=True)
     label: str | None = Field(default=None, max_length=100)
 
 
 class Connector(ConnectorBase, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=nanoid, primary_key=True)
     created_at: datetime = Field(default_factory=_utcnow, nullable=False)
     updated_at: datetime = Field(default_factory=_utcnow, nullable=False)
 
@@ -202,6 +204,6 @@ class ConnectorUpdate(SQLModel):
 
 
 class ConnectorRead(ConnectorBase):
-    id: int
+    id: str
     created_at: datetime
     updated_at: datetime

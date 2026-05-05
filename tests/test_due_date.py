@@ -165,6 +165,13 @@ def test_http_repository_round_trip_due_date(
 # ---------------------------------------------------------------------------
 
 
+def _last_task(session: Session) -> Task:
+    """Return the most recently created task."""
+    tasks = list(session.exec(select(Task)).all())
+    assert tasks, "expected at least one task in the DB"
+    return tasks[-1]
+
+
 def test_cli_create_with_due(db_engine, runner: CliRunner) -> None:
     result = runner.invoke(
         cli_app, ["create", "deadline", "-D", "2030-07-04"]
@@ -172,8 +179,7 @@ def test_cli_create_with_due(db_engine, runner: CliRunner) -> None:
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
-    assert task is not None
+        task = _last_task(s)
     assert task.due_date == date(2030, 7, 4)
 
 
@@ -185,30 +191,36 @@ def test_cli_create_invalid_due_exits_2(db_engine, runner: CliRunner) -> None:
 
 def test_cli_update_due(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["create", "t"])
-    result = runner.invoke(cli_app, ["update", "1", "-D", "2030-08-01"])
+    with Session(db_engine) as s:
+        tid = _last_task(s).id
+    result = runner.invoke(cli_app, ["update", tid, "-D", "2030-08-01"])
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
+        task = s.get(Task, tid)
     assert task is not None
     assert task.due_date == date(2030, 8, 1)
 
 
 def test_cli_clear_due(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["create", "t", "-D", "2030-08-01"])
-    result = runner.invoke(cli_app, ["update", "1", "--clear-due"])
+    with Session(db_engine) as s:
+        tid = _last_task(s).id
+    result = runner.invoke(cli_app, ["update", tid, "--clear-due"])
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
+        task = s.get(Task, tid)
     assert task is not None
     assert task.due_date is None
 
 
 def test_cli_due_and_clear_due_conflict(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["create", "t"])
+    with Session(db_engine) as s:
+        tid = _last_task(s).id
     result = runner.invoke(
-        cli_app, ["update", "1", "-D", "2030-08-01", "--clear-due"]
+        cli_app, ["update", tid, "-D", "2030-08-01", "--clear-due"]
     )
     assert result.exit_code == 2
     assert "not both" in result.output
@@ -300,6 +312,9 @@ async def test_tui_edit_task_clear_due_date(db_engine) -> None:
     with Session(db_engine) as s:
         s.add(Task(title="t", due_date=date(2030, 1, 1)))
         s.commit()
+        task = s.exec(select(Task)).first()
+        assert task is not None
+        task_id = task.id
 
     app = Systema2App()
     async with app.run_test() as pilot:
@@ -317,6 +332,6 @@ async def test_tui_edit_task_clear_due_date(db_engine) -> None:
         await pilot.pause()
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
+        task = s.get(Task, task_id)
     assert task is not None
     assert task.due_date is None

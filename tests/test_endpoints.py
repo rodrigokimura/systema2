@@ -58,7 +58,7 @@ def test_list_tasks_returns_created(client: TestClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 2
-    titles = [t["title"] for t in data]
+    titles = sorted(t["title"] for t in data)
     assert titles == ["first", "second"]
 
 
@@ -72,7 +72,7 @@ def test_get_task(client: TestClient) -> None:
 
 
 def test_get_task_not_found(client: TestClient) -> None:
-    response = client.get("/tasks/9999")
+    response = client.get("/tasks/nonexistent")
     assert response.status_code == 404
     assert response.json()["detail"] == "Task not found"
 
@@ -118,7 +118,9 @@ def test_update_task_empty_payload(client: TestClient) -> None:
 
 
 def test_update_task_not_found(client: TestClient) -> None:
-    response = client.patch("/tasks/9999", json={"title": "nope"})
+    response = client.patch(
+        "/tasks/nonexistent", json={"title": "nope"}
+    )
     assert response.status_code == 404
 
 
@@ -136,5 +138,5 @@ def test_delete_task(client: TestClient, session: Session) -> None:
 
 
 def test_delete_task_not_found(client: TestClient) -> None:
-    response = client.delete("/tasks/9999")
+    response = client.delete("/tasks/nonexistent")
     assert response.status_code == 404

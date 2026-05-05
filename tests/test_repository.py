@@ -122,7 +122,7 @@ def test_http_repository_crud(http_repo_against_app: HttpTaskRepository) -> None
     assert fetched is not None
     assert fetched.title == "remote task"
 
-    assert repo.get_task(9999) is None
+    assert repo.get_task("nonexistent") is None
 
     updated = repo.update_task(
         created.id, TaskUpdate(completed=True)
@@ -132,7 +132,7 @@ def test_http_repository_crud(http_repo_against_app: HttpTaskRepository) -> None
     # Partial update must not null out title.
     assert updated.title == "remote task"
 
-    missing = repo.update_task(9999, TaskUpdate(title="nope"))
+    missing = repo.update_task("nonexistent", TaskUpdate(title="nope"))
     assert missing is None
 
     assert repo.delete_task(created.id) is True
@@ -163,8 +163,8 @@ def test_local_repository_projects_crud(db_engine) -> None:
 def test_local_repository_task_missing_project_raises(db_engine) -> None:
     repo = LocalTaskRepository()
     with pytest.raises(ProjectNotFoundError) as exc:
-        repo.create_task(TaskCreate(title="x", project_id=999))
-    assert exc.value.project_id == 999
+        repo.create_task(TaskCreate(title="x", project_id="nonexistent"))
+    assert exc.value.project_id == "nonexistent"
 
 
 def test_http_repository_projects_crud(
@@ -190,8 +190,8 @@ def test_http_repository_task_missing_project_raises(
 ) -> None:
     repo = http_repo_against_app
     with pytest.raises(ProjectNotFoundError) as exc:
-        repo.create_task(TaskCreate(title="x", project_id=999))
-    assert exc.value.project_id == 999
+        repo.create_task(TaskCreate(title="x", project_id="nonexistent"))
+    assert exc.value.project_id == "nonexistent"
 
     p = repo.create_project(ProjectCreate(name="p"))
     t = repo.create_task(TaskCreate(title="t", project_id=p.id))
@@ -199,7 +199,9 @@ def test_http_repository_task_missing_project_raises(
 
     # Update to bogus project also raises.
     with pytest.raises(ProjectNotFoundError):
-        repo.update_task(t.id, TaskUpdate(project_id=9999))  # type: ignore[arg-type]
+        repo.update_task(
+            t.id, TaskUpdate(project_id="nonexistent")
+        )  # type: ignore[arg-type]
 
 
 def test_http_repository_list_tasks_filters(

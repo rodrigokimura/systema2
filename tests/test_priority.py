@@ -133,12 +133,18 @@ def test_http_repository_priority_filter(
 # ---------------------------------------------------------------------------
 
 
+def _last_task(session: Session) -> Task:
+    tasks = list(session.exec(select(Task)).all())
+    assert tasks, "expected at least one task in the DB"
+    return tasks[-1]
+
+
 def test_cli_create_with_priority(db_engine, runner: CliRunner) -> None:
     result = runner.invoke(cli_app, ["create", "urgent", "-P", "H"])
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
+        task = _last_task(s)
     assert task is not None
     assert task.priority is Priority.HIGH
 
@@ -150,7 +156,7 @@ def test_cli_create_default_priority_medium(
     assert result.exit_code == 0
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
+        task = _last_task(s)
     assert task is not None
     assert task.priority is Priority.MEDIUM
 
@@ -163,11 +169,13 @@ def test_cli_create_invalid_priority(db_engine, runner: CliRunner) -> None:
 
 def test_cli_update_priority(db_engine, runner: CliRunner) -> None:
     runner.invoke(cli_app, ["create", "t"])
-    result = runner.invoke(cli_app, ["update", "1", "-P", "L"])
+    with Session(db_engine) as s:
+        tid = _last_task(s).id
+    result = runner.invoke(cli_app, ["update", tid, "-P", "L"])
     assert result.exit_code == 0, result.output
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
+        task = s.get(Task, tid)
     assert task is not None
     assert task.priority is Priority.LOW
 
@@ -214,8 +222,11 @@ async def test_tui_edit_task_priority_via_select(db_engine) -> None:
     and assign the select value programmatically, then submit.
     """
     with Session(db_engine) as s:
-        s.add(Task(title="t", priority=Priority.MEDIUM))
+        task = Task(title="t", priority=Priority.MEDIUM)
+        s.add(task)
         s.commit()
+        s.refresh(task)
+        task_id = task.id
 
     app = Systema2App()
     async with app.run_test() as pilot:
@@ -233,6 +244,6 @@ async def test_tui_edit_task_priority_via_select(db_engine) -> None:
         await pilot.pause()
 
     with Session(db_engine) as s:
-        task = s.get(Task, 1)
-    assert task is not None
-    assert task.priority is Priority.HIGH
+        fresh = s.get(Task, task_id)
+    assert fresh is not None
+    assert fresh.priority is Priority.HIGH

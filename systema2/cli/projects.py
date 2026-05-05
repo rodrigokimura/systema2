@@ -41,7 +41,7 @@ def list_projects() -> None:
 
 @app.command("show")
 def show_project(
-    project_id: int = typer.Argument(..., help="Project ID."),
+    project_id: str = typer.Argument(..., help="Project ID."),
     with_tasks: bool = typer.Option(
         False, "--with-tasks", help="Also list the project's tasks."
     ),
@@ -90,7 +90,7 @@ def create_project(
 
 @app.command("update")
 def update_project(
-    project_id: int = typer.Argument(..., help="ID of the project to update."),
+    project_id: str = typer.Argument(..., help="ID of the project to update."),
     name: str | None = typer.Option(None, "--name", "-n"),
     description: str | None = typer.Option(None, "--description", "-d"),
 ) -> None:
@@ -121,7 +121,7 @@ def update_project(
 
 @app.command("delete")
 def delete_project(
-    project_id: int = typer.Argument(..., help="ID of the project to delete."),
+    project_id: str = typer.Argument(..., help="ID of the project to delete."),
     yes: bool = typer.Option(
         False, "--yes", "-y", help="Skip confirmation prompt."
     ),

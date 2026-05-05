@@ -40,7 +40,7 @@ class AuthenticationError(RepositoryError):
 class ProjectNotFoundError(RepositoryError):
     """Raised when a CRUD call references a non-existent project."""
 
-    def __init__(self, project_id: int) -> None:
+    def __init__(self, project_id: str) -> None:
         super().__init__(f"Project {project_id} not found")
         self.project_id = project_id
 
@@ -50,24 +50,24 @@ class TaskRepository(Protocol):
     def list_tasks(
         self,
         *,
-        project_id: int | None = None,
+        project_id: str | None = None,
         unassigned: bool = False,
         priority: Priority | None = None,
         due_before: date | None = None,
     ) -> list[Task]: ...
-    def get_task(self, task_id: int) -> Task | None: ...
+    def get_task(self, task_id: str) -> Task | None: ...
     def create_task(self, payload: TaskCreate) -> Task: ...
-    def update_task(self, task_id: int, payload: TaskUpdate) -> Task | None: ...
-    def delete_task(self, task_id: int) -> bool: ...
+    def update_task(self, task_id: str, payload: TaskUpdate) -> Task | None: ...
+    def delete_task(self, task_id: str) -> bool: ...
 
     # Projects -----------------------------------------------------------
     def list_projects(self) -> list[Project]: ...
-    def get_project(self, project_id: int) -> Project | None: ...
+    def get_project(self, project_id: str) -> Project | None: ...
     def create_project(self, payload: ProjectCreate) -> Project: ...
     def update_project(
-        self, project_id: int, payload: ProjectUpdate
+        self, project_id: str, payload: ProjectUpdate
     ) -> Project | None: ...
-    def delete_project(self, project_id: int) -> bool: ...
+    def delete_project(self, project_id: str) -> bool: ...
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +83,7 @@ class LocalTaskRepository:
     def list_tasks(
         self,
         *,
-        project_id: int | None = None,
+        project_id: str | None = None,
         unassigned: bool = False,
         priority: Priority | None = None,
         due_before: date | None = None,
@@ -95,7 +95,7 @@ class LocalTaskRepository:
             due_before=due_before,
         )
 
-    def get_task(self, task_id: int) -> Task | None:
+    def get_task(self, task_id: str) -> Task | None:
         return services.get_task_std(task_id)
 
     def create_task(self, payload: TaskCreate) -> Task:
@@ -104,13 +104,13 @@ class LocalTaskRepository:
         except services.ProjectNotFoundError as exc:
             raise ProjectNotFoundError(exc.project_id) from exc
 
-    def update_task(self, task_id: int, payload: TaskUpdate) -> Task | None:
+    def update_task(self, task_id: str, payload: TaskUpdate) -> Task | None:
         try:
             return services.update_task_std(task_id, payload)
         except services.ProjectNotFoundError as exc:
             raise ProjectNotFoundError(exc.project_id) from exc
 
-    def delete_task(self, task_id: int) -> bool:
+    def delete_task(self, task_id: str) -> bool:
         return services.delete_task_std(task_id)
 
     # Projects -----------------------------------------------------------
@@ -118,18 +118,18 @@ class LocalTaskRepository:
     def list_projects(self) -> list[Project]:
         return services.list_projects_std()
 
-    def get_project(self, project_id: int) -> Project | None:
+    def get_project(self, project_id: str) -> Project | None:
         return services.get_project_std(project_id)
 
     def create_project(self, payload: ProjectCreate) -> Project:
         return services.create_project_std(payload)
 
     def update_project(
-        self, project_id: int, payload: ProjectUpdate
+        self, project_id: str, payload: ProjectUpdate
     ) -> Project | None:
         return services.update_project_std(project_id, payload)
 
-    def delete_project(self, project_id: int) -> bool:
+    def delete_project(self, project_id: str) -> bool:
         return services.delete_project_std(project_id)
 
 
@@ -205,14 +205,14 @@ class HttpTaskRepository:
             isinstance(detail, dict)
             and detail.get("error_code") == "project_not_found"
         ):
-            raise ProjectNotFoundError(int(detail["project_id"]))
+            raise ProjectNotFoundError(str(detail["project_id"]))
 
     # --- tasks ----------------------------------------------------------
 
     def list_tasks(
         self,
         *,
-        project_id: int | None = None,
+        project_id: str | None = None,
         unassigned: bool = False,
         priority: Priority | None = None,
         due_before: date | None = None,
@@ -235,7 +235,7 @@ class HttpTaskRepository:
         except httpx.HTTPError as exc:
             raise self._network_error(exc) from exc
 
-    def get_task(self, task_id: int) -> Task | None:
+    def get_task(self, task_id: str) -> Task | None:
         try:
             with self._client() as c:
                 r = c.get(f"/tasks/{task_id}")
@@ -258,7 +258,7 @@ class HttpTaskRepository:
         except httpx.HTTPError as exc:
             raise self._network_error(exc) from exc
 
-    def update_task(self, task_id: int, payload: TaskUpdate) -> Task | None:
+    def update_task(self, task_id: str, payload: TaskUpdate) -> Task | None:
         body = payload.model_dump(mode="json", exclude_unset=True)
         try:
             with self._client() as c:
@@ -272,7 +272,7 @@ class HttpTaskRepository:
         except httpx.HTTPError as exc:
             raise self._network_error(exc) from exc
 
-    def delete_task(self, task_id: int) -> bool:
+    def delete_task(self, task_id: str) -> bool:
         try:
             with self._client() as c:
                 r = c.delete(f"/tasks/{task_id}")
@@ -296,7 +296,7 @@ class HttpTaskRepository:
         except httpx.HTTPError as exc:
             raise self._network_error(exc) from exc
 
-    def get_project(self, project_id: int) -> Project | None:
+    def get_project(self, project_id: str) -> Project | None:
         try:
             with self._client() as c:
                 r = c.get(f"/projects/{project_id}")
@@ -319,7 +319,7 @@ class HttpTaskRepository:
             raise self._network_error(exc) from exc
 
     def update_project(
-        self, project_id: int, payload: ProjectUpdate
+        self, project_id: str, payload: ProjectUpdate
     ) -> Project | None:
         body = payload.model_dump(mode="json", exclude_unset=True)
         try:
@@ -333,7 +333,7 @@ class HttpTaskRepository:
         except httpx.HTTPError as exc:
             raise self._network_error(exc) from exc
 
-    def delete_project(self, project_id: int) -> bool:
+    def delete_project(self, project_id: str) -> bool:
         try:
             with self._client() as c:
                 r = c.delete(f"/projects/{project_id}")

@@ -167,7 +167,7 @@ class Systema2App(App[None]):
         target_index = 0
         if prev_filter == _UNASSIGNED:
             target_index = 1
-        elif isinstance(prev_filter, int):
+        elif isinstance(prev_filter, str):
             for i, p in enumerate(projects):
                 if p.id == prev_filter:
                     target_index = 2 + i
@@ -197,7 +197,7 @@ class Systema2App(App[None]):
         kwargs: dict[str, object] = {}
         if self._filter == _UNASSIGNED:
             kwargs["unassigned"] = True
-        elif isinstance(self._filter, int):
+        elif self._filter not in (_ALL, _UNASSIGNED):
             kwargs["project_id"] = self._filter
 
         try:
@@ -236,7 +236,7 @@ class Systema2App(App[None]):
                 key=str(t.id),
             )
 
-    def _selected_task_id(self) -> int | None:
+    def _selected_task_id(self) -> str | None:
         table = self.query_one(DataTable)
         if table.row_count == 0 or table.cursor_row is None:
             return None
@@ -246,10 +246,10 @@ class Systema2App(App[None]):
             return None
         if row_key.value is None:
             return None
-        try:
-            return int(row_key.value)
-        except ValueError:
+        value = row_key.value
+        if value is None:
             return None
+        return str(value)
 
     def _require_selected_task(self) -> Task | None:
         task_id = self._selected_task_id()
@@ -267,7 +267,7 @@ class Systema2App(App[None]):
             return None
         return task
 
-    def _current_project_id(self) -> int | None:
+    def _current_project_id(self) -> str | None:
         """Return the project id to preselect in new-task forms."""
         if isinstance(self._filter, int):
             return self._filter
