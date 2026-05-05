@@ -362,8 +362,9 @@ class WhiteboardScreen(Screen[None]):
 
     Vim-style keys:
 
-    * ``j / k / h / l``  \u2014 move the selected box by 1 cell (down/up/left/right).
-    * ``J / K / H / L``  \u2014 move by 5 cells.
+    * ``j / k / h / l``  \u2014 select the nearest box in that direction
+      (45\u00b0 rotated-quadrant search; Euclidean distance breaks ties).
+    * ``J / K / H / L``  \u2014 move the selected box by 5 cells.
     * ``n``              \u2014 create a new box at the cursor.
     * ``r``              \u2014 rename the selected box (label prompt).
     * ``x``              \u2014 delete the selected box (and its connectors).
@@ -377,11 +378,11 @@ class WhiteboardScreen(Screen[None]):
     BINDINGS = [
         Binding("escape", "close", "back"),
         Binding("q", "close", "back"),
-        # Movement (one cell).
-        Binding("h", "move(-1, 0)", "\u2190", show=False),
-        Binding("l", "move(1, 0)", "\u2192", show=False),
-        Binding("j", "move(0, 1)", "\u2193", show=False),
-        Binding("k", "move(0, -1)", "\u2191", show=False),
+        # Selection (45° rotated-quadrant + proximity).
+        Binding("h", "select_left", "\u2190", show=False),
+        Binding("l", "select_right", "\u2192", show=False),
+        Binding("j", "select_down", "\u2193", show=False),
+        Binding("k", "select_up", "\u2191", show=False),
         # Movement (five cells).
         Binding("H", "move(-5, 0)", "\u2190\u2190", show=False),
         Binding("L", "move(5, 0)", "\u2192\u2192", show=False),
@@ -481,6 +482,81 @@ class WhiteboardScreen(Screen[None]):
             i = (ids.index(self._selected_id) + step) % len(ids)
             self._selected_id = ids[i]
         self._render()
+
+    # ------------------------------------------------------------------
+    # Directional selection (45° rotated quadrants + Euclidean distance)
+    # ------------------------------------------------------------------
+
+    def _box_center(self, box: Box) -> tuple[float, float]:
+        """Return the visual centre of *box* as (cx, cy)."""
+        return (box.x + box.width / 2.0, box.y + box.height / 2.0)
+
+    def _select_nearest_in_direction(
+        self,
+        *,
+        s_sign: int,   # sign of (dx + dy)  -- rotated-u axis
+        d_sign: int,   # sign of (dy - dx)  -- rotated-v axis
+    ) -> None:
+        """Select the nearest box whose centre lies in the target quadrant.
+
+        Quadrants are defined after a 45° CCW rotation:
+
+            s = dx + dy     (axis pointing down-right)
+            d = dy - dx     (axis pointing down-left)
+
+        The four hjkl directions map to:
+            j (down)  : s > 0, d > 0
+            k (up)    : s < 0, d < 0
+            h (left)  : s < 0, d > 0
+            l (right) : s > 0, d < 0
+        """
+        current = self._selected_box()
+        if current is None:
+            # Nothing selected yet — select the first box if any.
+            if self._boxes:
+                self._selected_id = self._boxes[0].id
+                self._render()
+            return
+
+        cx, cy = self._box_center(current)
+
+        best: tuple[str, float] | None = None  # (box_id, dist_sq)
+        for b in self._boxes:
+            if b.id == current.id or b.id is None:
+                continue
+            bx, by = self._box_center(b)
+            dx = bx - cx
+            dy = by - cy
+            s = dx + dy
+            d = dy - dx
+            # Must be strictly inside the target quadrant (diagonal
+            # boundaries are excluded so the four quadrants are disjoint).
+            if (s > 0 if s_sign > 0 else s < 0) and (
+                d > 0 if d_sign > 0 else d < 0
+            ):
+                dist_sq = dx * dx + dy * dy
+                if best is None or dist_sq < best[1]:
+                    best = (b.id, dist_sq)
+
+        if best is not None:
+            self._selected_id = best[0]
+            self._render()
+
+    def action_select_left(self) -> None:
+        """Select the nearest box to the left (s<0, d>0)."""
+        self._select_nearest_in_direction(s_sign=-1, d_sign=+1)
+
+    def action_select_right(self) -> None:
+        """Select the nearest box to the right (s>0, d<0)."""
+        self._select_nearest_in_direction(s_sign=+1, d_sign=-1)
+
+    def action_select_down(self) -> None:
+        """Select the nearest box below (s>0, d>0)."""
+        self._select_nearest_in_direction(s_sign=+1, d_sign=+1)
+
+    def action_select_up(self) -> None:
+        """Select the nearest box above (s<0, d<0)."""
+        self._select_nearest_in_direction(s_sign=-1, d_sign=-1)
 
     def action_move(self, dx: int, dy: int) -> None:
         box = self._selected_box()

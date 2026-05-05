@@ -88,32 +88,138 @@ async def test_n_creates_a_box_on_the_whiteboard(db_engine) -> None:
     assert boxes[0].whiteboard_id == wb.id
 
 
-async def test_jkhl_moves_selected_box(db_engine) -> None:
+# ---------------------------------------------------------------------------
+# Proximity selection (hjkl with 45° rotated quadrants)
+# ---------------------------------------------------------------------------
+
+
+async def test_h_selects_nearest_left_box(db_engine) -> None:
     wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
     assert wb.id is not None
-    box = wbs.create_box_std(
-        BoxCreate(whiteboard_id=wb.id, label="a", x=10, y=10)
+    center = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="center", x=40, y=20)
     )
-    assert box.id is not None
+    left_near = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="left-near", x=10, y=21)
+    )
+    left_far = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="left-far", x=5, y=22)
+    )
+    # Place a box above so it is excluded by the quadrant filter.
+    wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="above", x=39, y=5)
+    )
 
     app = Systema2App()
     async with app.run_test() as pilot:
         await pilot.pause()
-        app.push_screen(WhiteboardScreen(wb))
+        screen = WhiteboardScreen(wb)
+        app.push_screen(screen)
         await pilot.pause()
-        await pilot.press("l")  # right
+        # Force selection to the center box.
+        screen._selected_id = center.id
+        screen._render()
+        await pilot.press("h")
+        await pilot.pause()
+
+    assert screen._selected_id == left_near.id
+
+
+async def test_l_selects_nearest_right_box(db_engine) -> None:
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
+    assert wb.id is not None
+    center = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="center", x=10, y=20)
+    )
+    right_box = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="right", x=60, y=22)
+    )
+
+    app = Systema2App()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = WhiteboardScreen(wb)
+        app.push_screen(screen)
+        await pilot.pause()
+        screen._selected_id = center.id
+        screen._render()
         await pilot.press("l")
-        await pilot.press("j")  # down
         await pilot.pause()
 
-    with Session(db_engine) as s:
-        fresh = s.get(Box, box.id)
-    assert fresh is not None
-    # Two rights, one down from (10, 10).
-    assert (fresh.x, fresh.y) == (12, 11)
+    assert screen._selected_id == right_box.id
 
 
-async def test_capital_L_moves_five_cells(db_engine) -> None:
+async def test_j_selects_nearest_down_box(db_engine) -> None:
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
+    assert wb.id is not None
+    top_box = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="top", x=10, y=5)
+    )
+    below = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="below", x=12, y=30)
+    )
+
+    app = Systema2App()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = WhiteboardScreen(wb)
+        app.push_screen(screen)
+        await pilot.pause()
+        screen._selected_id = top_box.id
+        screen._render()
+        await pilot.press("j")
+        await pilot.pause()
+
+    assert screen._selected_id == below.id
+
+
+async def test_k_selects_nearest_up_box(db_engine) -> None:
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
+    assert wb.id is not None
+    bottom = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="bottom", x=10, y=30)
+    )
+    above = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="above", x=8, y=5)
+    )
+
+    app = Systema2App()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = WhiteboardScreen(wb)
+        app.push_screen(screen)
+        await pilot.pause()
+        screen._selected_id = bottom.id
+        screen._render()
+        await pilot.press("k")
+        await pilot.pause()
+
+    assert screen._selected_id == above.id
+
+
+async def test_h_with_no_left_box_does_nothing(db_engine) -> None:
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
+    assert wb.id is not None
+    only = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="only", x=50, y=20)
+    )
+
+    app = Systema2App()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = WhiteboardScreen(wb)
+        app.push_screen(screen)
+        await pilot.pause()
+        screen._selected_id = only.id
+        screen._render()
+        await pilot.press("h")
+        await pilot.pause()
+
+    assert screen._selected_id == only.id
+
+
+async def test_shift_hjkl_still_moves_box(db_engine) -> None:
+    """Uppercase HJKL (Shift+hjkl) still moves the selected box by 5 cells."""
     wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
     assert wb.id is not None
     box = wbs.create_box_std(
@@ -126,8 +232,8 @@ async def test_capital_L_moves_five_cells(db_engine) -> None:
         await pilot.pause()
         app.push_screen(WhiteboardScreen(wb))
         await pilot.pause()
-        await pilot.press("L")  # +5 right
-        await pilot.press("J")  # +5 down
+        await pilot.press("L")  # +5 right (Shift+l)
+        await pilot.press("J")  # +5 down (Shift+j)
         await pilot.pause()
 
     with Session(db_engine) as s:
