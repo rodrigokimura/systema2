@@ -175,10 +175,15 @@ async def test_c_c_between_two_boxes_creates_connector(db_engine) -> None:
     app = Systema2App()
     async with app.run_test() as pilot:
         await pilot.pause()
-        app.push_screen(WhiteboardScreen(wb))
+        screen = WhiteboardScreen(wb)
+        app.push_screen(screen)
         await pilot.pause()
-        # Selection starts on the first box (``a``); arm the connector,
-        # cycle to ``b``, then commit.
+        # Boxes are ordered by nanoid (lexicographic), not creation order.
+        # Ensure ``a`` is selected before arming the connector.
+        if screen._selected_id == b.id:
+            await pilot.press("tab")  # move from b to a
+            await pilot.pause()
+        # Now ``a`` is selected — arm, cycle to ``b``, commit.
         await pilot.press("c")  # start from a
         await pilot.press("tab")  # select b
         await pilot.press("c")  # finish -> a → b
