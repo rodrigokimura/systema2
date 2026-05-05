@@ -33,6 +33,7 @@ from systema2.models import (
     ConnectorCreate,
     Whiteboard,
 )
+from systema2.tui.screens.rename_box import RenameBoxScreen
 
 
 # ---------------------------------------------------------------------------
@@ -511,16 +512,15 @@ class WhiteboardScreen(Screen[None]):
 
     def action_rename_box(self) -> None:
         box = self._selected_box()
-        if box is None:
+        if box is None or box.id is None:
             return
-        # Minimal inline rename: cycle through a few preset labels. A
-        # modal prompt can be wired in later; the action is kept simple
-        # so tests stay deterministic.
-        assert box.id is not None
-        suffix = (box.label or "").split("*")[-1]
-        new_label = f"*{suffix or box.label}"[:200]
-        wbs.update_box_std(box.id, BoxUpdate(label=new_label))
-        self._reload()
+
+        def _after(new_label: str | None) -> None:
+            if new_label is not None:
+                wbs.update_box_std(box.id, BoxUpdate(label=new_label))
+                self._reload()
+
+        self.app.push_screen(RenameBoxScreen(box.label or ""), _after)
 
     def action_delete_box(self) -> None:
         box = self._selected_box()

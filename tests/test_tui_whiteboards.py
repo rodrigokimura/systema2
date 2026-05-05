@@ -215,6 +215,62 @@ async def test_c_c_same_box_cancels_pending(db_engine) -> None:
     assert conns == []
 
 
+async def test_r_opens_rename_modal_and_saves(db_engine) -> None:
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
+    assert wb.id is not None
+    box = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="old", x=0, y=0)
+    )
+    assert box.id is not None
+
+    app = Systema2App()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.push_screen(WhiteboardScreen(wb))
+        await pilot.pause()
+        await pilot.press("r")
+        await pilot.pause()
+        # Modal should be on top.
+        from systema2.tui.screens.rename_box import RenameBoxScreen
+        from textual.widgets import Input
+
+        assert isinstance(app.screen, RenameBoxScreen)
+        # Replace the pre-filled text.
+        app.screen.query_one("#label", Input).value = "renamed"
+        await pilot.pause()
+        await pilot.press("ctrl+s")
+        await pilot.pause()
+
+    with Session(db_engine) as s:
+        fresh = s.get(Box, box.id)
+    assert fresh is not None
+    assert fresh.label == "renamed"
+
+
+async def test_r_rename_modal_cancel_preserves_label(db_engine) -> None:
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
+    assert wb.id is not None
+    box = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="keep", x=0, y=0)
+    )
+    assert box.id is not None
+
+    app = Systema2App()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.push_screen(WhiteboardScreen(wb))
+        await pilot.pause()
+        await pilot.press("r")
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+
+    with Session(db_engine) as s:
+        fresh = s.get(Box, box.id)
+    assert fresh is not None
+    assert fresh.label == "keep"
+
+
 async def test_escape_closes_editor(db_engine) -> None:
     wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
 
