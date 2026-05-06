@@ -35,21 +35,27 @@ def _plain(text) -> list[str]:
     return text.plain.rstrip("\n").splitlines()
 
 
-def test_canvas_has_expected_dimensions() -> None:
+def test_empty_canvas_uses_default_size() -> None:
     out = _plain(render_canvas([], []))
     assert len(out) == CANVAS_HEIGHT
-    # Every row is padded to the canvas width.
     for row in out:
         assert len(row) == CANVAS_WIDTH
 
 
-def test_empty_canvas_is_all_whitespace() -> None:
-    out = _plain(render_canvas([], []))
-    assert all(set(row) <= {" "} for row in out)
+def test_canvas_expands_to_fit_far_away_boxes() -> None:
+    # A box whose bottom-right corner is well beyond the fixed defaults.
+    box = _box("far", 150, 50, width=10, height=3, label="far")
+    out = _plain(render_canvas([box], []))
+    # Canvas must be at least (150 + 10 + pad) wide and (50 + 3 + pad) tall.
+    assert len(out) >= 55
+    assert len(out[0]) >= 162
+    # The box itself must be visible, not clipped.
+    assert out[50][150] == "\u250c"
+    assert out[52][159] == "\u2518"
 
 
 def test_single_box_is_drawn_with_corners_and_label() -> None:
-    box = _box(1, 2, 2, width=10, height=3, label="hello")
+    box = _box("b1", 2, 2, width=10, height=3, label="hello")
     out = _plain(render_canvas([box], []))
     # Top edge of the box.
     top = out[2]

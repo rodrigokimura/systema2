@@ -294,6 +294,34 @@ async def test_proximity_diagonal_equidistant_at_2to1_aspect(db_engine) -> None:
     assert screen._selected_id == right.id
 
 
+async def test_shift_hjkl_can_move_past_old_fixed_limits(db_engine) -> None:
+    """With fixed-size canvas movement was clamped at (120, 40).
+    The auto-expanding canvas should allow boxes to move beyond that."""
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
+    assert wb.id is not None
+    box = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="a", x=110, y=35)
+    )
+    assert box.id is not None
+
+    app = Systema2App()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        app.push_screen(WhiteboardScreen(wb))
+        await pilot.pause()
+        # L (+10 right) should go past the old 120-char limit.
+        # J (+5 down) should go past the old 40-char limit.
+        await pilot.press("L")
+        await pilot.press("J")
+        await pilot.pause()
+
+    with Session(db_engine) as s:
+        fresh = s.get(Box, box.id)
+    assert fresh is not None
+    assert fresh.x == 120  # 110 + 10, no clamping at 120 - width
+    assert fresh.y == 40   # 35 + 5, no clamping at 40 - height
+
+
 async def test_shift_hjkl_still_moves_box(db_engine) -> None:
     """Uppercase HJKL (Shift+hjkl) moves the selected box by a visually
     equal amount: 10 chars horizontally or 5 chars vertically.
