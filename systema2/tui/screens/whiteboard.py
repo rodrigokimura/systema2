@@ -49,6 +49,10 @@ CANVAS_HEIGHT = 40
 # vertical gap feels visually equivalent to a 2-cell horizontal gap.
 _ASPECT = 2.0
 
+# Minimum padding around the furthest renderable so the canvas doesn't
+# feel cramped at the edges.
+_CANVAS_PAD = 2
+
 
 @dataclass(frozen=True)
 class _RenderedBox:
@@ -67,16 +71,21 @@ class _RenderedBox:
         return (self.top + self.bottom) // 2
 
 
-def _clamp_to_canvas(box: Box) -> tuple[int, int, int, int]:
-    """Return (left, top, right, bottom) clamped to the canvas."""
-    left = max(0, min(box.x, CANVAS_WIDTH - 3))
-    top = max(0, min(box.y, CANVAS_HEIGHT - 3))
-    right = min(left + box.width - 1, CANVAS_WIDTH - 1)
-    bottom = min(top + box.height - 1, CANVAS_HEIGHT - 1)
-    # Ensure at least a 3x3 drawable frame.
-    right = max(right, left + 2)
-    bottom = max(bottom, top + 2)
-    return left, top, right, bottom
+def _required_canvas_size(
+    boxes: Iterable[Box],
+) -> tuple[int, int]:
+    """Return the (width, height) needed to fit every box + padding.
+
+    If there are no boxes the fixed default size is returned so the
+    screen still shows a blank canvas that can be panned later."""
+    all_boxes = list(boxes)
+    if not all_boxes:
+        return CANVAS_WIDTH, CANVAS_HEIGHT
+    max_right = max(b.x + b.width for b in all_boxes)
+    max_bottom = max(b.y + b.height for b in all_boxes)
+    w = max(CANVAS_WIDTH, max_right + _CANVAS_PAD)
+    h = max(CANVAS_HEIGHT, max_bottom + _CANVAS_PAD)
+    return w, h
 
 
 def render_canvas(
@@ -84,24 +93,29 @@ def render_canvas(
     connectors: Iterable[Connector],
     *,
     selected_box_id: str | None = None,
-    width: int = CANVAS_WIDTH,
-    height: int = CANVAS_HEIGHT,
 ) -> Text:
     """Render the whiteboard into a Rich ``Text`` grid.
 
-    Connectors are drawn first so boxes overwrite their endpoints, which
-    keeps the box outlines clean.
+    The canvas size is computed from the bounding box of all
+    renderables plus a small padding, so the board auto-expands as
+    boxes are moved outward. Connectors are drawn first so boxes
+    overwrite their endpoints, which keeps the box outlines clean.
     """
+    width, height = _required_canvas_size(boxes)
+
     grid = [[" "] * width for _ in range(height)]
     styles: list[list[str | None]] = [[None] * width for _ in range(height)]
 
     rendered: dict[str, _RenderedBox] = {}
     for b in boxes:
         assert b.id is not None
-        left, top, right, bottom = _clamp_to_canvas(b)
+        left = b.x
+        top = b.y
+        right = left + b.width - 1
+        bottom = top + b.height - 1
         rendered[b.id] = _RenderedBox(b.id, left, top, right, bottom)
 
-    # 1) Connectors first (L-shaped orthogonal poly-lines).
+    # 1) Connectors first so boxes overwrite their endpoints.
     for c in connectors:
         src = rendered.get(c.source_box_id)
         dst = rendered.get(c.target_box_id)
@@ -572,8 +586,9 @@ class WhiteboardScreen(Screen[None]):
         box = self._selected_box()
         if box is None or box.id is None:
             return
-        new_x = max(0, min(box.x + dx, CANVAS_WIDTH - box.width))
-        new_y = max(0, min(box.y + dy, CANVAS_HEIGHT - box.height))
+        # Canvas auto-expands, so only clip at the origin.
+        new_x = max(0, box.x + dx)
+        new_y = max(0, box.y + dy)
         if new_x == box.x and new_y == box.y:
             return
         wbs.update_box_std(box.id, BoxUpdate(x=new_x, y=new_y))
