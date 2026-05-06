@@ -54,6 +54,23 @@ def test_canvas_expands_to_fit_far_away_boxes() -> None:
     assert out[52][159] == "\u2518"
 
 
+def test_wide_canvas_does_not_wrap_lines() -> None:
+    # A box placed near the right edge of a very wide canvas.
+    # Each line in the rendered output must be exactly the canvas width
+    # — no wrapping, no repeated content.
+    box = _box("wide", 200, 5, width=12, height=3, label="wide")
+    out = _plain(render_canvas([box], []))
+    # Every row must have the same length (no wrap → no uneven lines).
+    lengths = {len(row) for row in out}
+    assert len(lengths) == 1, f"inconsistent row lengths: {lengths}"
+    # And that length must be at least enough to hold the box.
+    total_width = lengths.pop()
+    assert total_width >= 200 + 12 + 2
+    # Verify the box is drawn at its true x position (not wrapped).
+    assert out[5][200] == "\u250c"
+    assert out[5][211] == "\u2510"
+
+
 def test_single_box_is_drawn_with_corners_and_label() -> None:
     box = _box("b1", 2, 2, width=10, height=3, label="hello")
     out = _plain(render_canvas([box], []))

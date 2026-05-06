@@ -21,6 +21,7 @@ from typing import Iterable
 from rich.text import Text
 from textual.app import ComposeResult
 from textual.binding import Binding
+from textual.containers import ScrollableContainer
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
@@ -361,10 +362,16 @@ def _draw_connector(
 
 
 _STATUS_CSS = """
-#canvas {
+#canvas_scroll {
     height: auto;
     width: 1fr;
     padding: 0 1;
+    overflow-x: auto;
+    overflow-y: auto;
+}
+#canvas {
+    width: auto;
+    height: auto;
 }
 #status {
     dock: bottom;
@@ -437,9 +444,12 @@ class WhiteboardScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        # Seed with a single space so the Visual isn't None on first
-        # render; overwritten immediately by ``on_mount`` → ``_render``.
-        yield Static(Text(" "), id="canvas", markup=False)
+        # ScrollableContainer provides the scrollable viewport; the inner
+        # Static renders the canvas at its intrinsic size (width: auto)
+        # so lines never wrap. Overflow scrollbars appear automatically
+        # when the board exceeds the visible area.
+        with ScrollableContainer(id="canvas_scroll"):
+            yield Static(Text(" "), id="canvas", markup=False)
         yield Static(" ", id="status")
         yield Footer()
 
