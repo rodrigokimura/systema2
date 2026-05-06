@@ -218,8 +218,86 @@ async def test_h_with_no_left_box_does_nothing(db_engine) -> None:
     assert screen._selected_id == only.id
 
 
+async def test_proximity_prefers_y_nearer_box_with_aspect(db_engine) -> None:
+    """With a 2:1 terminal aspect ratio, a smaller vertical gap can
+    outweigh a larger horizontal gap in visual distance.
+
+    From a box at (0, 0) we create two left-side boxes:
+    - left_far:  (-10,  1)  → small dy, so visually close
+    - left_near: (-10, 10)  → same dx but large dy, visually farther
+
+    The aspect-compensated distance for left_far is ~sqrt(10^2 + (2*1)^2)
+    ≈ 10.2, while left_near is ~sqrt(10^2 + (2*10)^2) ≈ 22.4.
+    Pressing ``h`` should therefore pick left_far.
+    """
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
+    assert wb.id is not None
+    origin = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="origin", x=30, y=20)
+    )
+    left_far = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="lf", x=20, y=21)
+    )
+    left_near = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="ln", x=20, y=10)
+    )
+
+    app = Systema2App()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = WhiteboardScreen(wb)
+        app.push_screen(screen)
+        await pilot.pause()
+        screen._selected_id = origin.id
+        screen._render()
+        await pilot.press("h")
+        await pilot.pause()
+
+    assert screen._selected_id == left_far.id
+
+
+async def test_proximity_diagonal_equidistant_at_2to1_aspect(db_engine) -> None:
+    """At 2:1 aspect, a box offset (20, 0) horizontally and a box offset
+    (0, 10) vertically have the same *visual* distance from the origin.
+
+    We place three boxes:
+    - right:   (20, 0)  from origin → dx=20, dy=0  → dist=20
+    - below:   (0, 10)  from origin → dx=0,  dy=10 → aspect-dist=20
+    - diag:    (20, 10) from origin → dx=20, dy=10 → aspect-dist=~28
+
+    Pressing ``l`` from origin should pick *right* (nearest in that
+    quadrant; below is in the down quadrant and diag is farther).
+    """
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
+    assert wb.id is not None
+    origin = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="origin", x=20, y=20)
+    )
+    right = wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="right", x=40, y=20)
+    )
+    wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, label="below", x=20, y=30)
+    )
+
+    app = Systema2App()
+    async with app.run_test() as pilot:
+        await pilot.pause()
+        screen = WhiteboardScreen(wb)
+        app.push_screen(screen)
+        await pilot.pause()
+        screen._selected_id = origin.id
+        screen._render()
+        await pilot.press("l")
+        await pilot.pause()
+
+    assert screen._selected_id == right.id
+
+
 async def test_shift_hjkl_still_moves_box(db_engine) -> None:
-    """Uppercase HJKL (Shift+hjkl) still moves the selected box by 5 cells."""
+    """Uppercase HJKL (Shift+hjkl) moves the selected box by a visually
+    equal amount: 10 chars horizontally or 5 chars vertically.
+    """
     wb = wbs.create_whiteboard_std(WhiteboardCreate(name="w"))
     assert wb.id is not None
     box = wbs.create_box_std(
@@ -232,14 +310,14 @@ async def test_shift_hjkl_still_moves_box(db_engine) -> None:
         await pilot.pause()
         app.push_screen(WhiteboardScreen(wb))
         await pilot.pause()
-        await pilot.press("L")  # +5 right (Shift+l)
+        await pilot.press("L")  # +10 right (Shift+l)
         await pilot.press("J")  # +5 down (Shift+j)
         await pilot.pause()
 
     with Session(db_engine) as s:
         fresh = s.get(Box, box.id)
     assert fresh is not None
-    assert (fresh.x, fresh.y) == (15, 15)
+    assert (fresh.x, fresh.y) == (20, 15)
 
 
 async def test_x_deletes_selected_box(db_engine) -> None:

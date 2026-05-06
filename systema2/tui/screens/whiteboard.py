@@ -44,6 +44,11 @@ from systema2.tui.screens.rename_box import RenameBoxScreen
 CANVAS_WIDTH = 120
 CANVAS_HEIGHT = 40
 
+# Terminal characters are roughly twice as tall as they are wide.
+# We compensate for this in distance calculations so that a 1-cell
+# vertical gap feels visually equivalent to a 2-cell horizontal gap.
+_ASPECT = 2.0
+
 
 @dataclass(frozen=True)
 class _RenderedBox:
@@ -363,8 +368,11 @@ class WhiteboardScreen(Screen[None]):
     Vim-style keys:
 
     * ``j / k / h / l``  \u2014 select the nearest box in that direction
-      (45\u00b0 rotated-quadrant search; Euclidean distance breaks ties).
-    * ``J / K / H / L``  \u2014 move the selected box by 5 cells.
+      (45\u00b0 rotated-quadrant search; aspect-compensated distance).
+      Terminal chars are ~2:1 (height:width), so vertical gaps count
+      double when computing visual proximity.
+    * ``J / K / H / L``  \u2014 move the selected box by a visually equal
+      amount (10 chars horizontally or 5 chars vertically).
     * ``n``              \u2014 create a new box at the cursor.
     * ``r``              \u2014 rename the selected box (label prompt).
     * ``x``              \u2014 delete the selected box (and its connectors).
@@ -383,9 +391,9 @@ class WhiteboardScreen(Screen[None]):
         Binding("l", "select_right", "\u2192", show=False),
         Binding("j", "select_down", "\u2193", show=False),
         Binding("k", "select_up", "\u2191", show=False),
-        # Movement (five cells).
-        Binding("H", "move(-5, 0)", "\u2190\u2190", show=False),
-        Binding("L", "move(5, 0)", "\u2192\u2192", show=False),
+        # Movement (visually equal steps: 10 chars horiz = 5 chars vert).
+        Binding("H", "move(-10, 0)", "\u2190\u2190", show=False),
+        Binding("L", "move(10, 0)", "\u2192\u2192", show=False),
         Binding("J", "move(0, 5)", "\u2193\u2193", show=False),
         Binding("K", "move(0, -5)", "\u2191\u2191", show=False),
         # Selection.
@@ -534,7 +542,9 @@ class WhiteboardScreen(Screen[None]):
             if (s > 0 if s_sign > 0 else s < 0) and (
                 d > 0 if d_sign > 0 else d < 0
             ):
-                dist_sq = dx * dx + dy * dy
+                # Aspect-compensated distance: chars are ~2:1 (h:w).
+                # A 1-row vertical gap is visually ~2x a 1-col gap.
+                dist_sq = dx * dx + (_ASPECT * dy) * (_ASPECT * dy)
                 if best is None or dist_sq < best[1]:
                     best = (b.id, dist_sq)
 
