@@ -363,7 +363,7 @@ def _draw_connector(
 
 _STATUS_CSS = """
 #canvas_scroll {
-    height: auto;
+    height: 1fr;
     width: 1fr;
     padding: 0 1;
     overflow-x: auto;

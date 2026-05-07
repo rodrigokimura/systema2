@@ -495,3 +495,51 @@ async def test_escape_closes_editor(db_engine) -> None:
         await pilot.press("escape")
         await pilot.pause()
         assert not isinstance(app.screen, WhiteboardScreen)
+
+
+async def test_canvas_is_scrollable_both_directions(db_engine) -> None:
+    """When the board exceeds the viewport, both scrollbars must be present."""
+    wb = wbs.create_whiteboard_std(WhiteboardCreate(name="wide-tall"))
+    # Far-right box → horizontal overflow.
+    wbs.create_box_std(
+        BoxCreate(whiteboard_id=wb.id, x=150, y=5, width=10, height=3, label="far")
+    )
+    # Many tall boxes → vertical overflow.
+    for i in range(15):
+        wbs.create_box_std(
+            BoxCreate(
+                whiteboard_id=wb.id,
+                x=10,
+                y=i * 5,
+                width=10,
+                height=3,
+                label=f"b{i}",
+            )
+        )
+
+    app = Systema2App()
+    async with app.run_test(size=(40, 20)) as pilot:
+        await pilot.pause()
+        app.push_screen(WhiteboardScreen(wb))
+        await pilot.pause()
+        assert isinstance(app.screen, WhiteboardScreen)
+        sc = app.screen.query_one("#canvas_scroll")
+
+        # The_canvas_scroll height should be constrained (1fr) not expand.
+        assert sc.size.height < 80
+        # Horizontal scrollbar visible.
+        assert sc.show_horizontal_scrollbar is True
+        # Vertical scrollbar visible.
+        assert sc.show_vertical_scrollbar is True
+
+        # Scroll right works.
+        start_x = sc.scroll_x
+        await pilot.press("right")
+        await pilot.pause()
+        assert sc.scroll_x > start_x
+
+        # Scroll left works.
+        await pilot.press("left")
+        await pilot.pause()
+        # Back within one cell to account for selective-paging.
+        assert sc.scroll_x <= max(start_x, 0)
