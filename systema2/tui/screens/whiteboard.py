@@ -539,6 +539,35 @@ class WhiteboardScreen(Screen[None]):
             parts.append(f"selected #{self._selected_id}")
         status.update(" \u2502 ".join(parts))
 
+    def _ensure_selected_visible(self) -> None:
+        """Scroll the canvas viewport so the selected box is fully visible."""
+        box = self._selected_box()
+        if box is None:
+            return
+        container = self.query_one("#canvas_scroll", ScrollableContainer)
+        viewport_w = container.size.width
+        viewport_h = container.size.height
+        if viewport_w <= 0 or viewport_h <= 0:
+            return
+        sx = container.scroll_x
+        sy = container.scroll_y
+        left = box.x
+        top = box.y
+        right = box.x + box.width - 1
+        bottom = box.y + box.height - 1
+        target_x = sx
+        target_y = sy
+        if left < sx:
+            target_x = left
+        elif right >= sx + viewport_w:
+            target_x = right - viewport_w + 1
+        if top < sy:
+            target_y = top
+        elif bottom >= sy + viewport_h:
+            target_y = bottom - viewport_h + 1
+        if target_x != sx or target_y != sy:
+            container.scroll_to(target_x, target_y, animate=False)
+
     def _selected_box(self) -> Box | None:
         if self._selected_id is None:
             return None
@@ -564,6 +593,7 @@ class WhiteboardScreen(Screen[None]):
             i = (ids.index(self._selected_id) + step) % len(ids)
             self._selected_id = ids[i]
         self._render()
+        self.call_after_refresh(self._ensure_selected_visible)
 
     # ------------------------------------------------------------------
     # Directional selection (45° rotated quadrants + Euclidean distance)
@@ -598,6 +628,7 @@ class WhiteboardScreen(Screen[None]):
             if self._boxes:
                 self._selected_id = self._boxes[0].id
                 self._render()
+                self.call_after_refresh(self._ensure_selected_visible)
             return
 
         cx, cy = self._box_center(current)
@@ -625,6 +656,7 @@ class WhiteboardScreen(Screen[None]):
         if best is not None:
             self._selected_id = best[0]
             self._render()
+            self.call_after_refresh(self._ensure_selected_visible)
 
     def action_select_left(self) -> None:
         """Select the nearest box to the left (s<0, d>0)."""
@@ -653,6 +685,7 @@ class WhiteboardScreen(Screen[None]):
             return
         wbs.update_box_std(box.id, BoxUpdate(x=new_x, y=new_y))
         self._reload()
+        self.call_after_refresh(self._ensure_selected_visible)
 
     def action_new_box(self) -> None:
         assert self._wb.id is not None
@@ -670,6 +703,7 @@ class WhiteboardScreen(Screen[None]):
         )
         self._selected_id = box.id
         self._reload()
+        self.call_after_refresh(self._ensure_selected_visible)
 
     def action_rename_box(self) -> None:
         box = self._selected_box()
@@ -691,6 +725,7 @@ class WhiteboardScreen(Screen[None]):
         self._selected_id = None
         self._connect_source_id = None
         self._reload()
+        self.call_after_refresh(self._ensure_selected_visible)
 
     def action_connect(self) -> None:
         box = self._selected_box()
