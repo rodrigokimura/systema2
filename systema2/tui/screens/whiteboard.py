@@ -22,10 +22,10 @@ from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
-from textual.containers import ScrollableContainer
+from textual.containers import ScrollableContainer, Vertical
 from textual.geometry import Offset
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Static
+from textual.widgets import Button, Footer, Header, Label, Select, Static
 
 from systema2 import whiteboard_services as wbs
 from systema2.models import (
@@ -55,6 +55,27 @@ _ASPECT = 2.0
 # Minimum padding around the furthest renderable so the canvas doesn't
 # feel cramped at the edges.
 _CANVAS_PAD = 2
+
+# Toolbar style options
+_BORDER_OPTIONS: list[tuple[str, str]] = [
+    ("white", "bold white"),
+    ("red", "bold red"),
+    ("green", "bold green"),
+    ("blue", "bold blue"),
+    ("magenta", "bold magenta"),
+    ("cyan", "bold cyan"),
+    ("dim", "dim white"),
+]
+_FILL_OPTIONS: list[tuple[str, str | None]] = [
+    ("(none)", ""),
+    ("white bg", "on white"),
+    ("red bg", "on red"),
+    ("green bg", "on green"),
+    ("blue bg", "on blue"),
+    ("magenta bg", "on magenta"),
+    ("cyan bg", "on cyan"),
+    ("yellow bg", "on yellow"),
+]
 
 
 @dataclass(frozen=True)
@@ -130,12 +151,12 @@ def render_canvas(
     for b in boxes:
         assert b.id is not None
         r = rendered[b.id]
-        style = (
-            "bold yellow"
-            if selected_box_id is not None and b.id == selected_box_id
-            else "bold white"
+        is_selected = selected_box_id is not None and b.id == selected_box_id
+        border_style = (
+            "bold yellow" if is_selected else (b.border_style or "bold white")
         )
-        _draw_box(grid, styles, r, b.label, style)
+        fill_style = b.fill_style
+        _draw_box(grid, styles, r, b.label, border_style, fill_style)
 
     # Join into a Rich Text with per-character style hints.
     out = Text()
@@ -164,25 +185,26 @@ def _draw_box(
     styles: list[list[str | None]],
     r: _RenderedBox,
     label: str,
-    style: str,
+    border_style: str,
+    fill_style: str | None = None,
 ) -> None:
     # Corners
-    _set(grid, styles, r.left, r.top, "\u250c", style)
-    _set(grid, styles, r.right, r.top, "\u2510", style)
-    _set(grid, styles, r.left, r.bottom, "\u2514", style)
-    _set(grid, styles, r.right, r.bottom, "\u2518", style)
+    _set(grid, styles, r.left, r.top, "\u250c", border_style)
+    _set(grid, styles, r.right, r.top, "\u2510", border_style)
+    _set(grid, styles, r.left, r.bottom, "\u2514", border_style)
+    _set(grid, styles, r.right, r.bottom, "\u2518", border_style)
     # Horizontal edges
     for x in range(r.left + 1, r.right):
-        _set(grid, styles, x, r.top, "\u2500", style)
-        _set(grid, styles, x, r.bottom, "\u2500", style)
+        _set(grid, styles, x, r.top, "\u2500", border_style)
+        _set(grid, styles, x, r.bottom, "\u2500", border_style)
     # Vertical edges
     for y in range(r.top + 1, r.bottom):
-        _set(grid, styles, r.left, y, "\u2502", style)
-        _set(grid, styles, r.right, y, "\u2502", style)
-    # Clear interior so connectors poking through are hidden.
+        _set(grid, styles, r.left, y, "\u2502", border_style)
+        _set(grid, styles, r.right, y, "\u2502", border_style)
+    # Fill interior (or clear if no fill specified).
     for y in range(r.top + 1, r.bottom):
         for x in range(r.left + 1, r.right):
-            _set(grid, styles, x, y, " ", None)
+            _set(grid, styles, x, y, " ", fill_style)
     # Label (truncated to fit).
     inner_width = r.right - r.left - 1
     if inner_width > 0:
@@ -190,7 +212,7 @@ def _draw_box(
         row = (r.top + r.bottom) // 2
         start = r.left + 1 + max(0, (inner_width - len(text)) // 2)
         for i, ch in enumerate(text):
-            _set(grid, styles, start + i, row, ch, style)
+            _set(grid, styles, start + i, row, ch, border_style)
 
 
 def _draw_hline(
@@ -429,6 +451,40 @@ _STATUS_CSS = """
     padding: 0 1;
     background: $panel;
 }
+/* Floating toolbar – docked on the right edge, vertically centred */
+#style_toolbar {
+    dock: right;
+    layer: toolbar;
+    width: 18;
+    height: auto;
+    background: $surface;
+    border: solid $accent;
+    padding: 1 0;
+    display: none;
+}
+#style_toolbar Button {
+    width: 14;
+    margin: 0 2 0 2;
+    min-height: 1;
+    height: 1;
+    text-style: none;
+}
+#style_toolbar Select {
+    width: 14;
+    margin: 0 2 1 2;
+}
+#style_toolbar .label {
+    text-align: center;
+    text-style: bold;
+    width: 100%;
+    padding-bottom: 1;
+}
+#style_toolbar .hint {
+    color: $text-muted;
+    text-align: center;
+    width: 100%;
+    padding-top: 1;
+}
 """
 
 
@@ -476,6 +532,8 @@ class WhiteboardScreen(Screen[None]):
         Binding("x", "delete_box", "[x] delete"),
         # Connector.
         Binding("c", "connect", "[c]onnect"),
+        # Toolbar.
+        Binding("b", "toggle_toolbar", "[b] style"),
     ]
 
     def __init__(self, whiteboard: Whiteboard) -> None:
@@ -500,6 +558,28 @@ class WhiteboardScreen(Screen[None]):
         # when the board exceeds the visible area.
         with ScrollableContainer(id="canvas_scroll"):
             yield _Canvas(Text(" "), id="canvas", markup=False)
+        # Floating style toolbar — hidden by default.
+        with Vertical(id="style_toolbar"):
+            yield Label("Style", classes="label")
+            yield Label("Border", classes="label")
+            yield Select(
+                _BORDER_OPTIONS,
+                prompt="",
+                value="bold white",
+                id="sel_border",
+            )
+            yield Label("Fill", classes="label")
+            yield Select(
+                _FILL_OPTIONS,
+                prompt="",
+                value="",
+                id="sel_fill",
+            )
+            yield Button("Clear Fill", id="btn_clear", variant="error")
+            yield Static(
+                "[b] hide",
+                classes="hint",
+            )
         yield Static(" ", id="status")
         yield Footer()
 
@@ -726,6 +806,56 @@ class WhiteboardScreen(Screen[None]):
         self._connect_source_id = None
         self._reload()
         self.call_after_refresh(self._ensure_selected_visible)
+
+    # ------------------------------------------------------------------
+    # Toolbar helpers
+    # ------------------------------------------------------------------
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id != "btn_clear":
+            return
+        box = self._selected_box()
+        if box is None or box.id is None:
+            return
+        wbs.update_box_std(box.id, BoxUpdate(fill_style=None))
+        self._reload()
+
+    def _sync_toolbar(self) -> None:
+        """Reflect the selected box's style in the toolbar controls."""
+        box = self._selected_box()
+        toolbar = self.query_one("#style_toolbar")
+        if box is None:
+            toolbar.styles.display = "none"
+            return
+        toolbar.styles.display = "block"
+        self.query_one("#sel_border", Select).value = box.border_style or "bold white"
+        self.query_one("#sel_fill", Select).value = box.fill_style or ""
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        """Apply a style change from the toolbar Select widgets."""
+        box = self._selected_box()
+        if box is None or box.id is None:
+            return
+        sel_id = event.select.id
+        raw = None if event.value == Select.NULL else event.value
+        assert isinstance(raw, str)
+        value = raw or None
+        update = BoxUpdate()
+        if sel_id == "sel_border":
+            update.border_style = value  # type: ignore[assignment]
+        elif sel_id == "sel_fill":
+            update.fill_style = value
+        if update.model_dump(exclude_unset=True):
+            wbs.update_box_std(box.id, update)
+            self._reload()
+
+    def action_toggle_toolbar(self) -> None:
+        toolbar = self.query_one("#style_toolbar")
+        is_visible = toolbar.styles.display != "none"
+        toolbar.styles.display = "none" if is_visible else "block"
+        if not is_visible:
+            self._sync_toolbar()
+            self.query_one("#sel_border", Select).focus()
 
     def action_connect(self) -> None:
         box = self._selected_box()

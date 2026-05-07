@@ -279,6 +279,11 @@ def list_boxes_std(whiteboard_id: str) -> list[Box]:
         return list_boxes(s, whiteboard_id)
 
 
+def get_box_std(box_id: str) -> Box | None:
+    with _session() as s:
+        return get_box(s, box_id)
+
+
 def create_box_std(payload: BoxCreate) -> Box:
     with _session() as s:
         return create_box(s, payload)

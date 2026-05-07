@@ -156,6 +156,9 @@ class BoxBase(SQLModel):
     width: int = Field(default=12, ge=3, le=200)
     height: int = Field(default=3, ge=3, le=100)
     whiteboard_id: str = Field(foreign_key="whiteboard.id", index=True)
+    # Appearance
+    border_style: str = Field(default="bold white", max_length=100)
+    fill_style: str | None = Field(default=None, max_length=100)
 
 
 class Box(BoxBase, table=True):
@@ -174,6 +177,8 @@ class BoxUpdate(SQLModel):
     y: int | None = Field(default=None, ge=0, le=1000)
     width: int | None = Field(default=None, ge=3, le=200)
     height: int | None = Field(default=None, ge=3, le=100)
+    border_style: str | None = Field(default=None, max_length=100)
+    fill_style: str | None = Field(default=None, max_length=100)
 
 
 class BoxRead(BoxBase):
