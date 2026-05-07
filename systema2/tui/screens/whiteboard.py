@@ -19,9 +19,11 @@ from dataclasses import dataclass
 from typing import Iterable
 
 from rich.text import Text
+from textual import events
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import ScrollableContainer
+from textual.geometry import Offset
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Static
 
@@ -357,6 +359,54 @@ def _draw_connector(
 
 
 # ---------------------------------------------------------------------------
+# Canvas widget (draggable scrolling)
+# ---------------------------------------------------------------------------
+
+class _Canvas(Static):
+    """Canvas widget that captures mouse drag to pan the parent scroll container."""
+
+    FOCUS_ON_CLICK = False
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._drag_start: Offset | None = None
+        self._scroll_start: tuple[float, float] = (0, 0)
+
+    def _container(self) -> ScrollableContainer | None:
+        p = self.parent
+        if isinstance(p, ScrollableContainer):
+            return p
+        return None
+
+    def on_mouse_down(self, event: events.MouseDown) -> None:
+        if self._container() is None:
+            return
+        self.capture_mouse()
+        self._drag_start = event.screen_offset
+        self._scroll_start = (self._container().scroll_x, self._container().scroll_y)
+
+    def on_mouse_up(self, _event: events.MouseUp) -> None:
+        self.release_mouse()
+        self._drag_start = None
+
+    def on_mouse_move(self, event: events.MouseMove) -> None:
+        if self._drag_start is None:
+            return
+        container = self._container()
+        if container is None:
+            return
+        dx = event.screen_offset.x - self._drag_start.x
+        dy = event.screen_offset.y - self._drag_start.y
+        # Invert delta: dragging up/right should reveal content
+        # below/left, just like we pan a map.
+        container.scroll_to(
+            self._scroll_start[0] - dx,
+            self._scroll_start[1] - dy,
+            animate=False,
+        )
+
+
+# ---------------------------------------------------------------------------
 # Screen
 # ---------------------------------------------------------------------------
 
@@ -449,7 +499,7 @@ class WhiteboardScreen(Screen[None]):
         # so lines never wrap. Overflow scrollbars appear automatically
         # when the board exceeds the visible area.
         with ScrollableContainer(id="canvas_scroll"):
-            yield Static(Text(" "), id="canvas", markup=False)
+            yield _Canvas(Text(" "), id="canvas", markup=False)
         yield Static(" ", id="status")
         yield Footer()
 
