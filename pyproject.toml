@@ -1,6 +1,6 @@
 [project]
 name = "systema2"
-version = "0.4.0"
+version = "0.5.0"
 description = "A small task manager with a FastAPI backend, Typer CLI, and Textual TUI. Runs in local, client, or server mode."
 readme = "README.md"
 requires-python = ">=3.13"
