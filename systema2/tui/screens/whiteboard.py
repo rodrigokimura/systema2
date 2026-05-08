@@ -641,6 +641,7 @@ class WhiteboardScreen(Screen[None]):
         elif self._selected_id is not None:
             parts.append(f"selected #{self._selected_id}")
         status.update(" \u2502 ".join(parts))
+        self._maybe_refresh_toolbar()
 
     def _ensure_selected_visible(self) -> None:
         """Scroll the canvas viewport so the selected box is fully visible."""
@@ -863,6 +864,18 @@ class WhiteboardScreen(Screen[None]):
             toolbar.styles.display = "none"
             return
         toolbar.styles.display = "block"
+        self.query_one("#sel_border", Select).value = box.border_style or "bold white"
+        self.query_one("#sel_fill", Select).value = box.fill_style or ""
+
+    def _maybe_refresh_toolbar(self) -> None:
+        """If the toolbar is visible, update its dropdowns to the selected box."""
+        toolbar = self.query_one("#style_toolbar")
+        if toolbar.styles.display == "none":
+            return
+        box = self._selected_box()
+        if box is None:
+            toolbar.styles.display = "none"
+            return
         self.query_one("#sel_border", Select).value = box.border_style or "bold white"
         self.query_one("#sel_fill", Select).value = box.fill_style or ""
 
