@@ -393,6 +393,13 @@ class _Canvas(Static):
         super().__init__(*args, **kwargs)
         self._drag_start: Offset | None = None
         self._scroll_start: tuple[float, float] = (0, 0)
+        self._click_delta: Offset | None = None
+
+    def _screen(self) -> WhiteboardScreen | None:
+        s = self.screen
+        if isinstance(s, WhiteboardScreen):
+            return s
+        return None
 
     def _container(self) -> ScrollableContainer | None:
         p = self.parent
@@ -405,15 +412,31 @@ class _Canvas(Static):
             return
         self.capture_mouse()
         self._drag_start = event.screen_offset
+        self._click_delta = Offset(0, 0)
         self._scroll_start = (self._container().scroll_x, self._container().scroll_y)
 
-    def on_mouse_up(self, _event: events.MouseUp) -> None:
+    def on_mouse_up(self, event: events.MouseUp) -> None:
         self.release_mouse()
+        # Only treat as a click if we didn't drag significantly.
+        if (
+            self._click_delta is not None
+            and abs(self._click_delta.x) <= 1
+            and abs(self._click_delta.y) <= 1
+        ):
+            screen = self._screen()
+            if screen is not None:
+                screen._handle_canvas_click(event.offset)
         self._drag_start = None
+        self._click_delta = None
 
     def on_mouse_move(self, event: events.MouseMove) -> None:
         if self._drag_start is None:
             return
+        if self._click_delta is not None:
+            self._click_delta = Offset(
+                event.screen_offset.x - self._drag_start.x,
+                event.screen_offset.y - self._drag_start.y,
+            )
         container = self._container()
         if container is None:
             return
@@ -654,6 +677,18 @@ class WhiteboardScreen(Screen[None]):
         for b in self._boxes:
             if b.id == self._selected_id:
                 return b
+
+    def _handle_canvas_click(self, offset: Offset) -> None:
+        """Select the box under the mouse cursor (if any)."""
+        x, y = offset.x, offset.y
+        for b in self._boxes:
+            if b.id is None:
+                continue
+            if b.x <= x <= b.x + b.width - 1 and b.y <= y <= b.y + b.height - 1:
+                self._selected_id = b.id
+                self._render()
+                self.call_after_refresh(self._ensure_selected_visible)
+                return
         return None
 
     # ------------------------------------------------------------------
