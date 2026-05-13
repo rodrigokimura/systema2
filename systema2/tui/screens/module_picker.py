@@ -26,6 +26,7 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, Static
 # Stable identifiers used as list_view item ids.
 MODULE_TASKS = "tasks"
 MODULE_WHITEBOARDS = "whiteboards"
+MODULE_CALENDAR = "calendar"
 
 
 class ModulePickerScreen(Screen[None]):
@@ -59,6 +60,7 @@ class ModulePickerScreen(Screen[None]):
     BINDINGS = [
         Binding("t", "pick('tasks')", "[t]asks"),
         Binding("w", "pick('whiteboards')", "[w]hiteboards"),
+        Binding("c", "pick('calendar')", "[c]alendar"),
         Binding("enter", "activate", "open", show=False),
         Binding("j", "cursor_down", "\u2193", show=False),
         Binding("k", "cursor_up", "\u2191", show=False),
@@ -69,6 +71,7 @@ class ModulePickerScreen(Screen[None]):
     # against the string arg passed to ``action_pick``.
     MODULES: list[tuple[str, str, str]] = [
         (MODULE_TASKS, "Tasks", "tasks and projects"),
+        (MODULE_CALENDAR, "Calendar", "monthly / weekly / yearly views"),
         (MODULE_WHITEBOARDS, "Whiteboards", "free-form boxes & connectors"),
     ]
 
@@ -78,7 +81,7 @@ class ModulePickerScreen(Screen[None]):
             yield Label("systema2 \u2014 pick a module", classes="title")
             yield ListView(id="modules")
             yield Static(
-                "[t] tasks  \u2022  [w] whiteboards  \u2022  [\u21b5] open  \u2022  [q] quit",
+                "[t] tasks  \u2022  [c] calendar  \u2022  [w] whiteboards  \u2022  [\u21b5] open  \u2022  [q] quit",
                 id="hint",
             )
         yield Footer()

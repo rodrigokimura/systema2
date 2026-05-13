@@ -12,7 +12,9 @@ from systema2.models import Project, Task, TaskUpdate
 from systema2.repository import RepositoryError, get_repository
 from systema2.tui.screens.delete import DeleteProjectScreen, DeleteTaskScreen
 from systema2.tui.screens.form import AddTaskScreen, EditTaskScreen
+from systema2.tui.screens.calendar import CalendarScreen
 from systema2.tui.screens.module_picker import (
+    MODULE_CALENDAR,
     MODULE_TASKS,
     MODULE_WHITEBOARDS,
     ModulePickerScreen,
@@ -72,6 +74,7 @@ class Systema2App(App[None]):
         Binding("ctrl+w", "focus_next_pane", "switch pane"),
         # --- module navigation ---
         Binding("w", "whiteboards", "[w]hiteboards"),
+        Binding("c", "calendar", "[c]alendar"),
         Binding("m", "module_picker", "[m]odules"),
         # --- misc ---
         Binding("r", "refresh", "refresh"),
@@ -317,6 +320,10 @@ class Systema2App(App[None]):
         """Open the whiteboard picker screen."""
         self.push_screen(WhiteboardListScreen())
 
+    def action_calendar(self) -> None:
+        """Open the calendar screen."""
+        self.push_screen(CalendarScreen())
+
     def action_module_picker(self) -> None:
         """Re-open the module picker."""
         self.push_screen(ModulePickerScreen())
@@ -330,6 +337,8 @@ class Systema2App(App[None]):
         """
         if key == MODULE_WHITEBOARDS:
             self.call_later(self.push_screen, WhiteboardListScreen())
+        elif key == MODULE_CALENDAR:
+            self.call_later(self.push_screen, CalendarScreen())
         elif key == MODULE_TASKS:
             # Nothing to push — the default screen is the tasks view.
             pass
