@@ -69,7 +69,8 @@ async def test_k_j_moves_highlight_and_enter_picks_whiteboards(
     app = Systema2App()
     async with app.run_test() as pilot:
         await pilot.pause()
-        # Move highlight down to Whiteboards, then activate.
+        # Move highlight down twice (Tasks → Calendar → Whiteboards), then activate.
+        await pilot.press("j")
         await pilot.press("j")
         await pilot.press("enter")
         await pilot.pause()
