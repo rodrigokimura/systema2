@@ -322,7 +322,7 @@ class Systema2App(App[None]):
 
     def action_calendar(self) -> None:
         """Open the calendar screen."""
-        self.push_screen(CalendarScreen())
+        self.push_screen(CalendarScreen(repo=self._repo))
 
     def action_module_picker(self) -> None:
         """Re-open the module picker."""
@@ -338,7 +338,7 @@ class Systema2App(App[None]):
         if key == MODULE_WHITEBOARDS:
             self.call_later(self.push_screen, WhiteboardListScreen())
         elif key == MODULE_CALENDAR:
-            self.call_later(self.push_screen, CalendarScreen())
+            self.call_later(self.push_screen, CalendarScreen(repo=self._repo))
         elif key == MODULE_TASKS:
             # Nothing to push — the default screen is the tasks view.
             pass
